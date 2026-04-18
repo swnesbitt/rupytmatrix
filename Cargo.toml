@@ -1,0 +1,35 @@
+[package]
+name = "rupytmatrix"
+version = "0.1.0"
+edition = "2021"
+authors = ["Stephen Nesbitt <swnesbitt@gmail.com>"]
+license = "MIT"
+description = "Rust-backed T-matrix scattering for nonspherical particles (port of pytmatrix)"
+repository = "https://github.com/swnesbitt/rupytmatrix"
+readme = "README.md"
+keywords = ["scattering", "t-matrix", "radar", "electromagnetic", "mie"]
+categories = ["science", "mathematics"]
+
+[lib]
+name = "rupytmatrix"
+# `cdylib` is needed to produce the Python extension;
+# `rlib` lets `cargo test` run the tests in the library crate.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+num-complex = "0.4"
+ndarray = "0.16"
+nalgebra = { version = "0.33", features = ["std"] }
+numpy = "0.22"
+
+[dependencies.pyo3]
+version = "0.22"
+features = ["extension-module", "abi3-py38", "num-complex"]
+
+[dev-dependencies]
+approx = "0.5"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1

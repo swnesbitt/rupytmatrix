@@ -1,0 +1,88 @@
+[build-system]
+requires = ["maturin>=1.5,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "rupytmatrix"
+version = "0.1.0"
+description = "Rust-backed T-matrix scattering for nonspherical particles (port of pytmatrix)"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "Stephen Nesbitt", email = "swnesbitt@gmail.com" },
+]
+requires-python = ">=3.9"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Scientific/Engineering :: Atmospheric Science",
+]
+dependencies = [
+    "numpy>=1.23",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7",
+    "pytest-xdist",
+    "numpy>=1.23",
+    "scipy>=1.10",
+]
+dev = [
+    "maturin>=1.5",
+    "ruff",
+]
+# NOTE: pytmatrix (the original Fortran-backed package used for parity
+# testing) is intentionally NOT listed as an extra. It needs gfortran
+# and ships a legacy setup.py, which causes uv's universal resolver
+# to try (and fail) to build it during `uv sync` or `uv run` even
+# when the extra is not requested. Install it manually when you want
+# to run the parity tests:
+#
+#     uv pip install pytmatrix
+#
+# The [tool.uv.extra-build-dependencies] block below makes that work
+# by injecting numpy into pytmatrix's build environment.
+
+[project.urls]
+Repository = "https://github.com/swnesbitt/rupytmatrix"
+Issues = "https://github.com/swnesbitt/rupytmatrix/issues"
+
+[tool.maturin]
+# Target Python 3.13 (plus back-compat via abi3-py38). The extension
+# lives under `python/rupytmatrix/` alongside pure-Python modules.
+python-source = "python"
+module-name = "rupytmatrix._core"
+features = ["pyo3/extension-module"]
+# Ensure abi3 so a single wheel works across Python versions.
+strip = true
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-ra --strict-markers"
+markers = [
+    "parity: tests that compare rupytmatrix to the original pytmatrix",
+    "slow: long-running tests",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+# pytmatrix ships a legacy setup.py that imports numpy at build time
+# without declaring it in build-system.requires. Tell uv to inject
+# numpy + setuptools into the build environment so a manual
+# `uv pip install pytmatrix` works.
+[tool.uv.extra-build-dependencies]
+pytmatrix = ["numpy", "setuptools", "wheel"]
