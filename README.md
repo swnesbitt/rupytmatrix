@@ -134,12 +134,22 @@ Fully implemented and unit-tested (`cargo test --lib`, `pytest`):
 * `gaussian_pdf` / `uniform_pdf` orientation PDFs and the Gautschi-based
   `get_points_and_weights` quadrature helper (used internally by
   `orient_averaged_fixed`).
-
-Not yet implemented:
-
-* Size distribution integration (`psd_integrator`).
-* Radar / PSD / refractive-index helper modules. These are pure Python in
-  pytmatrix and can be copied over verbatim; they don't touch the Fortran core.
+* Size-distribution integration: `ExponentialPSD`, `UnnormalizedGammaPSD`,
+  `GammaPSD`, `BinnedPSD`, and `PSDIntegrator` (tabulate-then-trapezoid
+  averaging over an ``N(D)``). Parity-verified against pytmatrix's
+  ``test_psd`` case.
+* Angular-integrated scattering helpers (`sca_intensity`, `ldr`,
+  `sca_xsect`, `ext_xsect`, `ssa`, `asym`) and radar-band auxiliary
+  constants (`wl_S`..`wl_W`, `K_w_sqr`, geometry presets, Thurai /
+  Pruppacher-Beard / Beard-Chuang drop-shape relationships).
+* Refractive-index helpers: Maxwell-Garnett and Bruggeman EMAs,
+  tabulated water refractive indices at 0/10/20 °C for all six radar
+  bands, and an ice/snow interpolator bundled with the Warren ice
+  optical-constants table (``rupytmatrix.refractive.mi``).
+* Polarimetric radar observables: `radar_xsect`, `refl`/`Zi`, `Zdr`,
+  `delta_hv`, `rho_hv`, `Kdp`, `Ai` (direct port of pytmatrix's
+  `radar.py`, works on both single orientations and PSD-integrated
+  scatterers).
 
 ## Running the tests
 

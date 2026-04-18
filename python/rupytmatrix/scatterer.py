@@ -57,6 +57,7 @@ class Scatterer:
     _tm_signature: Tuple = field(default_factory=tuple, repr=False)
     _scatter_signature: Tuple = field(default_factory=tuple, repr=False)
     _orient_signature: Tuple = field(default_factory=tuple, repr=False)
+    _psd_signature: Tuple = field(default_factory=tuple, repr=False)
     _S_single: Optional[np.ndarray] = field(default=None, repr=False)
     _Z_single: Optional[np.ndarray] = field(default=None, repr=False)
     _S: Optional[np.ndarray] = field(default=None, repr=False)
@@ -85,6 +86,9 @@ class Scatterer:
             "or_pdf": _orientation.gaussian_pdf(),
             "n_alpha": 5,
             "n_beta": 10,
+            # PSD integration (disabled by default).
+            "psd_integrator": None,
+            "psd": None,
         }
         deprecated = {
             "axi": "radius",
@@ -111,6 +115,7 @@ class Scatterer:
         object.__setattr__(self, "_tm_signature", ())
         object.__setattr__(self, "_scatter_signature", ())
         object.__setattr__(self, "_orient_signature", ())
+        object.__setattr__(self, "_psd_signature", ())
         object.__setattr__(self, "_S_single", None)
         object.__setattr__(self, "_Z_single", None)
         object.__setattr__(self, "_S", None)
@@ -235,7 +240,27 @@ class Scatterer:
         return self._S, self._Z
 
     def get_SZ(self):
-        return self.get_SZ_orient()
+        """S and Z, PSD-integrated if ``psd_integrator`` is set, else single."""
+        if self.psd_integrator is None:
+            return self.get_SZ_orient()
+
+        scatter_sig = (
+            self.thet0,
+            self.thet,
+            self.phi0,
+            self.phi,
+            self.alpha,
+            self.beta,
+            self.orient,
+        )
+        psd_sig = (self.psd,)
+        if self._scatter_signature != scatter_sig or self._psd_signature != psd_sig:
+            S, Z = self.psd_integrator(self.psd, self.get_geometry())
+            object.__setattr__(self, "_S", np.asarray(S))
+            object.__setattr__(self, "_Z", np.asarray(Z))
+            object.__setattr__(self, "_scatter_signature", scatter_sig)
+            object.__setattr__(self, "_psd_signature", psd_sig)
+        return self._S, self._Z
 
     def get_S(self):
         return self.get_SZ()[0]

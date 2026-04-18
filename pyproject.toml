@@ -9,7 +9,7 @@ description = "Rust-backed T-matrix scattering for nonspherical particles (port 
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
-    { name = "Stephen Nesbitt", email = "swnesbitt@gmail.com" },
+    { name = "Stephen Nesbitt", email = "snesbitt@illinois.edu" },
 ]
 requires-python = ">=3.9"
 classifiers = [

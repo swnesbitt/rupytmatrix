@@ -86,6 +86,38 @@ def test_cylinder_parity(PyScatterer):
     _compare(py, rs, s_tol=5e-3, z_tol=5e-3)
 
 
+def test_psd_integration_parity(PyScatterer):
+    """PSD-integrated S and Z should match pytmatrix for a gamma PSD.
+
+    Mirrors pytmatrix's own ``test_psd`` — a sphere at lambda=6.5 with
+    m=1.5+0.5j and a GammaPSD(D0=1.0, Nw=1e3, mu=4) sampled over [0, 10].
+    """
+    from pytmatrix import psd as py_psd
+
+    from rupytmatrix import psd as rs_psd
+
+    geom = (90.0, 90.0, 0.0, 180.0, 0.0, 0.0)
+    m = complex(1.5, 0.5)
+
+    py = PyScatterer(wavelength=6.5, m=m, axis_ratio=1.0)
+    py.set_geometry(geom)
+    py.psd_integrator = py_psd.PSDIntegrator()
+    py.psd_integrator.num_points = 64
+    py.psd_integrator.D_max = 10.0
+    py.psd = py_psd.GammaPSD(D0=1.0, Nw=1e3, mu=4)
+    py.psd_integrator.init_scatter_table(py)
+
+    rs = RsScatterer(wavelength=6.5, m=m, axis_ratio=1.0)
+    rs.set_geometry(geom)
+    rs.psd_integrator = rs_psd.PSDIntegrator()
+    rs.psd_integrator.num_points = 64
+    rs.psd_integrator.D_max = 10.0
+    rs.psd = rs_psd.GammaPSD(D0=1.0, Nw=1e3, mu=4)
+    rs.psd_integrator.init_scatter_table(rs)
+
+    _compare(py, rs, s_tol=1e-3, z_tol=1e-3)
+
+
 def test_orient_averaged_fixed_parity(PyScatterer):
     """Fixed-quadrature orientation averaging should match pytmatrix's."""
     from pytmatrix import orientation as py_orient
