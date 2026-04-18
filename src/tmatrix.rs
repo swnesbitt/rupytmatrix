@@ -934,23 +934,25 @@ mod tests {
         let t1 = &state.t[1];
 
         eprintln!("\n--- sphere m=1 vs m=0 block diagonal (nmax={nmax}) ---");
-        eprintln!("  {:>3}  {:>28}  {:>28}  {:>28}  {:>28}", "n",
-            "T0-11", "T1-11", "T0-22", "T1-22");
+        eprintln!(
+            "  {:>3}  {:>28}  {:>28}  {:>28}  {:>28}",
+            "n", "T0-11", "T1-11", "T0-22", "T1-22"
+        );
         for n in 1..=nmax {
-            let t0_11 = t0[(n-1, n-1)];
-            let t1_11 = t1[(n-1, n-1)];
-            let t0_22 = t0[(n-1+nmax, n-1+nmax)];
-            let t1_22 = t1[(n-1+nmax, n-1+nmax)];
+            let t0_11 = t0[(n - 1, n - 1)];
+            let t1_11 = t1[(n - 1, n - 1)];
+            let t0_22 = t0[(n - 1 + nmax, n - 1 + nmax)];
+            let t1_22 = t1[(n - 1 + nmax, n - 1 + nmax)];
             eprintln!("  {n:>3}  {:>12.4e}{:+12.4e}i  {:>12.4e}{:+12.4e}i  {:>12.4e}{:+12.4e}i  {:>12.4e}{:+12.4e}i",
                 t0_11.re, t0_11.im, t1_11.re, t1_11.im,
                 t0_22.re, t0_22.im, t1_22.re, t1_22.im);
         }
 
         for n in 1..=nmax {
-            let t0_11 = t0[(n-1, n-1)];
-            let t1_11 = t1[(n-1, n-1)];
-            let t0_22 = t0[(n-1+nmax, n-1+nmax)];
-            let t1_22 = t1[(n-1+nmax, n-1+nmax)];
+            let t0_11 = t0[(n - 1, n - 1)];
+            let t1_11 = t1[(n - 1, n - 1)];
+            let t0_22 = t0[(n - 1 + nmax, n - 1 + nmax)];
+            let t1_22 = t1[(n - 1 + nmax, n - 1 + nmax)];
             let tol = 0.01;
             let norm11 = t0_11.norm().max(1e-30);
             let norm22 = t0_22.norm().max(1e-30);
@@ -1006,9 +1008,7 @@ mod tests {
             let mie_c = mie::mie(x, m);
             let t = &state.t[0];
 
-            eprintln!(
-                "\n--- sphere x={x:.3}, m={m}, nmax={nmax} ---"
-            );
+            eprintln!("\n--- sphere x={x:.3}, m={m}, nmax={nmax} ---");
             eprintln!(
                 "  {:>3}  {:>24}  {:>24}  {:>24}  {:>24}",
                 "n", "T11 (got)", "-b_n (mie)", "T22 (got)", "-a_n (mie)"

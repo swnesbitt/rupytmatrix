@@ -294,3 +294,84 @@ def test_psd_integration_orient_averaged_parity(PyScatterer):
     rs.psd_integrator.init_scatter_table(rs)
 
     _compare(py, rs, s_tol=5e-3, z_tol=5e-3)
+
+
+def test_psd_integration_angular_parity(PyScatterer):
+    """PSD tabulation with angular_integration=True should match pytmatrix.
+
+    Exercises ``tabulate_scatter_table_with_angular``: per-diameter
+    sca_xsect / ext_xsect / asym are integrated in Rust on a Gauss-Legendre
+    (θ, φ) grid; pytmatrix uses scipy.dblquad per diameter. Compare the
+    populated ``_angular_table`` entries element-wise.
+    """
+    from pytmatrix import psd as py_psd
+
+    from rupytmatrix import psd as rs_psd
+
+    geom = (90.0, 90.0, 0.0, 180.0, 0.0, 0.0)
+    m = complex(1.5, 0.01)
+    kw = dict(wavelength=6.283185307, m=m, axis_ratio=1.0,
+              ddelt=1e-4, ndgs=2)
+
+    py = PyScatterer(**kw)
+    py.set_geometry(geom)
+    py.psd_integrator = py_psd.PSDIntegrator()
+    py.psd_integrator.num_points = 8
+    py.psd_integrator.D_max = 4.0
+    py.psd = py_psd.GammaPSD(D0=1.0, Nw=1e3, mu=4)
+    py.psd_integrator.init_scatter_table(py, angular_integration=True)
+
+    rs = RsScatterer(**kw)
+    rs.set_geometry(geom)
+    rs.psd_integrator = rs_psd.PSDIntegrator()
+    rs.psd_integrator.num_points = 8
+    rs.psd_integrator.D_max = 4.0
+    rs.psd = rs_psd.GammaPSD(D0=1.0, Nw=1e3, mu=4)
+    rs.psd_integrator.init_scatter_table(rs, angular_integration=True)
+
+    for key in ("sca_xsect", "ext_xsect", "asym"):
+        for pol in ("h_pol", "v_pol"):
+            p = py.psd_integrator._angular_table[key][pol][geom]
+            r = rs.psd_integrator._angular_table[key][pol][geom]
+            np.testing.assert_allclose(r, p, rtol=1e-3, atol=1e-6)
+
+
+def test_psd_integration_orient_adaptive_parity(PyScatterer):
+    """PSD + orient_averaged_adaptive should match pytmatrix within 5e-3.
+
+    The Rust path uses a dense uniform-α × Gauss-Legendre-β grid with
+    ``or_pdf(β)`` folded into the weights, dispatched through the existing
+    orientation-averaged tabulator. Pytmatrix calls scipy.dblquad 24 times
+    per diameter — this test is slow on the reference side, so keeps
+    ``num_points`` small.
+    """
+    from pytmatrix import orientation as py_orient, psd as py_psd
+
+    from rupytmatrix import orientation as rs_orient, psd as rs_psd
+
+    geom = (90.0, 90.0, 0.0, 180.0, 0.0, 0.0)
+    m = complex(1.5, 0.01)
+    kw = dict(wavelength=6.283185307, m=m, axis_ratio=1.5,
+              ddelt=1e-4, ndgs=2)
+
+    py = PyScatterer(**kw)
+    py.set_geometry(geom)
+    py.or_pdf = py_orient.gaussian_pdf(std=20.0, mean=90.0)
+    py.orient = py_orient.orient_averaged_adaptive
+    py.psd_integrator = py_psd.PSDIntegrator()
+    py.psd_integrator.num_points = 4
+    py.psd_integrator.D_max = 3.0
+    py.psd = py_psd.GammaPSD(D0=1.0, Nw=1e3, mu=4)
+    py.psd_integrator.init_scatter_table(py)
+
+    rs = RsScatterer(**kw)
+    rs.set_geometry(geom)
+    rs.or_pdf = rs_orient.gaussian_pdf(std=20.0, mean=90.0)
+    rs.orient = rs_orient.orient_averaged_adaptive
+    rs.psd_integrator = rs_psd.PSDIntegrator()
+    rs.psd_integrator.num_points = 4
+    rs.psd_integrator.D_max = 3.0
+    rs.psd = rs_psd.GammaPSD(D0=1.0, Nw=1e3, mu=4)
+    rs.psd_integrator.init_scatter_table(rs)
+
+    _compare(py, rs, s_tol=5e-3, z_tol=5e-3)

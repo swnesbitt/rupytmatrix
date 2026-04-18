@@ -136,13 +136,15 @@ Fully implemented and unit-tested (`cargo test --lib`, `pytest`):
   `orient_averaged_fixed`).
 * Size-distribution integration: `ExponentialPSD`, `UnnormalizedGammaPSD`,
   `GammaPSD`, `BinnedPSD`, and `PSDIntegrator` (tabulate-then-trapezoid
-  averaging over an ``N(D)``). Both the single-orientation and
-  fixed-quadrature orientation-averaged tabulation paths are implemented
+  averaging over an ``N(D)``). All four tabulation paths — single
+  orientation, fixed-quadrature orientation averaging, adaptive
+  orientation averaging, and single-orient `angular_integration=True`
+  (per-diameter `sca_xsect` / `ext_xsect` / `asym`) — are implemented
   in Rust and parallelised across diameters via `rayon` (GIL released).
-  Against Fortran pytmatrix: ~4× faster on single-orient PSD and ~10×
-  faster on orientation-averaged PSD at 64 points. Parity-verified
-  against pytmatrix's ``test_psd`` plus a combined orient-averaged /
-  PSD-integrated test.
+  Against Fortran pytmatrix: ~4× on single-orient PSD, ~10× on
+  orientation-averaged PSD (64 points), ~300× on `angular_integration`
+  (64 points), and ~400× on orient-averaged-adaptive PSD. Parity-verified
+  against pytmatrix on all four paths.
 * Angular-integrated scattering helpers (`sca_intensity`, `ldr`,
   `sca_xsect`, `ext_xsect`, `ssa`, `asym`) and radar-band auxiliary
   constants (`wl_S`..`wl_W`, `K_w_sqr`, geometry presets, Thurai /
@@ -163,14 +165,17 @@ Against the Fortran `pytmatrix` backend on the same machine (Apple M-series,
 
 | Workload | pytmatrix (Fortran) | rupytmatrix (Rust) | Speedup |
 |---|---:|---:|---:|
-| `calctmat` only (spheroid, ax = 1.5) | 0.23 ms | 0.21 ms | 1.07× |
-| Single orientation, cold (fresh `Scatterer`) | 0.22 ms | 0.27 ms | 0.84× (slower) |
-| Cached re-evaluation (warm T-matrix) | 0.01 ms | 0.00 ms | 1.70× |
-| Orientation-averaged fixed (4 × 8 = 32 orientations) | 4.34 ms | 0.71 ms | **6.1×** |
-| PSD `init_scatter_table`, 32 points | 6.92 ms | 1.95 ms | **3.5×** |
-| PSD `init_scatter_table`, 64 points | 13.57 ms | 3.27 ms | **4.2×** |
-| PSD + orient-avg (4 × 8), 32 points | 13.74 ms | 1.56 ms | **8.8×** |
-| PSD + orient-avg (4 × 8), 64 points | 23.59 ms | 2.38 ms | **9.9×** |
+| `calctmat` only (spheroid, ax = 1.5) | 0.22 ms | 0.21 ms | 1.1× |
+| Single orientation, cold (fresh `Scatterer`) | 0.23 ms | 0.26 ms | 0.9× (slower) |
+| Cached re-evaluation (warm T-matrix) | 0.01 ms | 0.00 ms | 1.6× |
+| Orientation-averaged fixed (4 × 8 = 32 orientations) | 4.26 ms | 0.75 ms | **5.7×** |
+| PSD `init_scatter_table`, 32 points | 12.3 ms | 2.2 ms | **5.7×** |
+| PSD `init_scatter_table`, 64 points | 13.5 ms | 3.4 ms | **4.0×** |
+| PSD + orient-avg (4 × 8), 32 points | 13.8 ms | 1.7 ms | **8.2×** |
+| PSD + orient-avg (4 × 8), 64 points | 23.4 ms | 2.4 ms | **9.7×** |
+| PSD + `angular_integration`, 32 points | 13 345 ms | 52 ms | **258×** |
+| PSD + `angular_integration`, 64 points | 26 210 ms | 87 ms | **300×** |
+| PSD + orient-avg-adaptive, 4 points | 1 758 ms | 4.1 ms | **433×** |
 
 Headline notes:
 
@@ -182,6 +187,12 @@ Headline notes:
   (~4× single-orient, ~10× combined with orient averaging), because the
   per-diameter T-matrix solves are independent and `rayon` parallelises
   them across cores with the GIL released.
+* The outlier 100×–400× speedups on `angular_integration` and
+  `orient_averaged_adaptive` come from replacing scipy's per-diameter
+  `dblquad` callbacks with a fixed Gauss-Legendre product grid evaluated
+  inside Rust. The callbacks cross the Python/Fortran boundary hundreds
+  of times per diameter on pytmatrix; the Rust path amortises the
+  T-matrix solve across the whole grid and runs diameters in parallel.
 * The ~16% slowdown on the "single orient cold" case is Python/PyO3
   boundary overhead that F2PY avoids. It disappears as soon as the
   T-matrix is reused (cached re-eval, orientation averaging, PSD tabulation).

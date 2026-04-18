@@ -343,19 +343,19 @@ class PSDIntegrator:
         else:
             axis_ratios = np.full(self.num_points, float(tm.axis_ratio))
 
-        # Rust fast paths: single orientation and fixed-quadrature
-        # orientation averaging, both parallelised across diameters.
-        # Adaptive orientation averaging (scipy.dblquad) and the
-        # ``angular_integration`` path still fall through to Python,
-        # because they rely on per-sample Python callbacks.
+        # Rust fast paths: single orientation, fixed-quadrature orientation
+        # averaging, adaptive orientation averaging, and the single-orient
+        # ``angular_integration`` path. Each is parallelised across
+        # diameters. The fallback Python loop remains for combinations
+        # that need per-sample Python callbacks (e.g. angular integration
+        # together with orientation averaging).
         orient_fn = getattr(tm, "orient", _orientation.orient_single)
-        use_rust_single = (
-            not angular_integration and orient_fn is _orientation.orient_single
-        )
-        use_rust_orient_avg = (
-            not angular_integration
-            and orient_fn is _orientation.orient_averaged_fixed
-        )
+        is_single = orient_fn is _orientation.orient_single
+        is_fixed = orient_fn is _orientation.orient_averaged_fixed
+        is_adaptive = orient_fn is _orientation.orient_averaged_adaptive
+        use_rust_single = not angular_integration and is_single
+        use_rust_orient_avg = not angular_integration and (is_fixed or is_adaptive)
+        use_rust_angular = angular_integration and is_single
 
         try:
             # Disable PSD integration on the scatterer to avoid recursion
@@ -370,7 +370,7 @@ class PSDIntegrator:
                         for pol in ("h_pol", "v_pol"):
                             self._angular_table[key][pol][geom] = np.empty(self.num_points)
 
-            if use_rust_single or use_rust_orient_avg:
+            if use_rust_single or use_rust_orient_avg or use_rust_angular:
                 geoms = [tuple(g) for g in self.geometries]
                 common = (
                     np.ascontiguousarray(self._psd_D, dtype=float),
@@ -386,18 +386,56 @@ class PSDIntegrator:
                     float(tm.ddelt),
                     int(tm.ndgs),
                 )
+                sca_batch = ext_batch = asym_batch = None
                 if use_rust_orient_avg:
-                    # Build the (alpha, beta) quadrature the same way the
-                    # Python orient_averaged_fixed does, then hand the nodes
-                    # to the Rust averager.
-                    tm._init_orient()
-                    alphas = np.linspace(0, 360, tm.n_alpha + 1)[:-1]
+                    if is_fixed:
+                        # Match orient_averaged_fixed: Gautschi quadrature
+                        # against or_pdf for β, uniform α.
+                        tm._init_orient()
+                        alphas = np.linspace(0, 360, tm.n_alpha + 1)[:-1]
+                        betas = np.asarray(tm.beta_p, dtype=float)
+                        beta_w = np.asarray(tm.beta_w, dtype=float)
+                    else:
+                        # Match orient_averaged_adaptive: dense uniform α
+                        # (32 pts) × Gauss-Legendre β on [0, 180] with
+                        # or_pdf(β) folded into the weights. Rust renormalises
+                        # by sum(beta_w), so constant prefactors drop out.
+                        n_alpha_adapt = 32
+                        n_beta_adapt = 32
+                        alphas = np.linspace(0, 360, n_alpha_adapt + 1)[:-1]
+                        b_nodes, b_w = np.polynomial.legendre.leggauss(n_beta_adapt)
+                        betas = 90.0 * (b_nodes + 1.0)  # map [-1,1] -> [0,180]
+                        or_pdf = getattr(tm, "or_pdf", _orientation.uniform_pdf())
+                        beta_w = b_w * or_pdf(betas)
                     S_batch, Z_batch = _core.tabulate_scatter_table_orient_avg(
                         *common,
                         np.ascontiguousarray(alphas, dtype=float),
-                        np.ascontiguousarray(tm.beta_p, dtype=float),
-                        np.ascontiguousarray(tm.beta_w, dtype=float),
+                        np.ascontiguousarray(betas, dtype=float),
+                        np.ascontiguousarray(beta_w, dtype=float),
                         *extras,
+                    )
+                elif use_rust_angular:
+                    # Gauss-Legendre product grid for (θ, φ) on the full
+                    # scattering sphere. 32 × 64 points are enough to match
+                    # scipy.dblquad for smooth T-matrix integrands; bump if
+                    # the parity tolerance is ever tightened.
+                    n_thet = 32
+                    n_phi = 64
+                    t_nodes, t_w = np.polynomial.legendre.leggauss(n_thet)
+                    p_nodes, p_w = np.polynomial.legendre.leggauss(n_phi)
+                    thet_rad = 0.5 * np.pi * (t_nodes + 1.0)
+                    phi_rad = np.pi * (p_nodes + 1.0)
+                    thet_weights = 0.5 * np.pi * t_w
+                    phi_weights = np.pi * p_w
+                    S_batch, Z_batch, sca_batch, ext_batch, asym_batch = (
+                        _core.tabulate_scatter_table_with_angular(
+                            *common,
+                            np.ascontiguousarray(thet_rad, dtype=float),
+                            np.ascontiguousarray(thet_weights, dtype=float),
+                            np.ascontiguousarray(phi_rad, dtype=float),
+                            np.ascontiguousarray(phi_weights, dtype=float),
+                            *extras,
+                        )
                     )
                 else:
                     S_batch, Z_batch = _core.tabulate_scatter_table(
@@ -408,6 +446,17 @@ class PSDIntegrator:
                 for g_idx, geom in enumerate(self.geometries):
                     self._S_table[geom] = np.moveaxis(S_batch[:, g_idx, :, :], 0, -1)
                     self._Z_table[geom] = np.moveaxis(Z_batch[:, g_idx, :, :], 0, -1)
+                    if sca_batch is not None:
+                        for pol_idx, pol in enumerate(("h_pol", "v_pol")):
+                            self._angular_table["sca_xsect"][pol][geom] = (
+                                sca_batch[:, g_idx, pol_idx].copy()
+                            )
+                            self._angular_table["ext_xsect"][pol][geom] = (
+                                ext_batch[:, g_idx, pol_idx].copy()
+                            )
+                            self._angular_table["asym"][pol][geom] = (
+                                asym_batch[:, g_idx, pol_idx].copy()
+                            )
             else:
                 # Fallback: Python loop (orientation-averaged or angular
                 # integration). Keeps callbacks like ``tm.orient`` working.

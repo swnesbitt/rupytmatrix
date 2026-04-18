@@ -39,6 +39,10 @@ jobs:
           python -m pip install -U pip
           pip install maturin pytest numpy scipy
       - name: Build + install wheel
-        run: maturin develop --release
+        # maturin develop requires a virtualenv; CI's system Python has none,
+        # so build a wheel and install it instead.
+        run: |
+          maturin build --release --out dist
+          pip install --no-index --find-links=dist rupytmatrix
       - name: Run tests (without pytmatrix — parity tests skipped)
         run: pytest -v tests/

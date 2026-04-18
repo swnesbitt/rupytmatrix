@@ -194,8 +194,7 @@ pub fn tabulate_scatter_table<'py>(
                 };
                 let state = rs_calctmat(cfg);
                 for (g_idx, g) in geometries.iter().enumerate() {
-                    let (s, z) =
-                        calcampl(&state, lam, g.0, g.1, g.2, g.3, g.4, g.5);
+                    let (s, z) = calcampl(&state, lam, g.0, g.1, g.2, g.3, g.4, g.5);
                     let s_off = g_idx * 4;
                     s_row[s_off] = s[0][0];
                     s_row[s_off + 1] = s[0][1];
@@ -314,9 +313,7 @@ pub fn tabulate_scatter_table_orient_avg<'py>(
                     let mut z_acc = [[0.0_f64; 4]; 4];
                     for &alpha in &alphas {
                         for (&beta, &w) in betas.iter().zip(beta_w.iter()) {
-                            let (s, z) = calcampl(
-                                &state, lam, g.0, g.1, g.2, g.3, alpha, beta,
-                            );
+                            let (s, z) = calcampl(&state, lam, g.0, g.1, g.2, g.3, alpha, beta);
                             for a in 0..2 {
                                 for b in 0..2 {
                                     s_acc[a][b] += Complex64::new(w, 0.0) * s[a][b];
@@ -351,12 +348,217 @@ pub fn tabulate_scatter_table_orient_avg<'py>(
     Ok((s_arr.into_pyarray_bound(py), z_arr.into_pyarray_bound(py)))
 }
 
+/// Batch tabulator with per-diameter angular-integrated quantities.
+///
+/// In addition to the full `(S, Z)` tables at every geometry (same layout as
+/// `tabulate_scatter_table`), this also returns per-diameter, per-geometry,
+/// per-polarisation scalars for:
+///   * `sca_xsect` — polarised scattering cross-section
+///     `∫∫ (Z[0,0] ∓ Z[0,1]) sin(θ) dθ dφ`, integrated on a product
+///     Gauss-Legendre grid supplied by the caller.
+///   * `ext_xsect` — extinction cross-section from the optical theorem:
+///     `2 λ · Im(S_forward[i,i])` evaluated once per diameter in the
+///     forward-scattering geometry of each base geometry.
+///   * `asym` — per-diameter asymmetry `⟨cosΘ⟩` = (weighted cosΘ integral)
+///     / `sca_xsect`, integrated on the same (θ, φ) grid.
+///
+/// Runs in parallel across diameters with the GIL released. Single
+/// orientation only — orientation averaging plus angular integration is
+/// still handled by the Python fallback.
+///
+/// Returns `(S_table, Z_table, sca_xsect, ext_xsect, asym)` where the
+/// angular tables have shape `(num_points, num_geoms, 2)` with the last
+/// axis being `[h_pol, v_pol]`.
+#[pyfunction]
+#[pyo3(signature = (
+    diameters, axis_ratios, ms_real, ms_imag, geometries,
+    thet_nodes, thet_weights, phi_nodes, phi_weights,
+    rat, lam, np, ddelt, ndgs
+))]
+#[allow(clippy::too_many_arguments)]
+pub fn tabulate_scatter_table_with_angular<'py>(
+    py: Python<'py>,
+    diameters: PyReadonlyArray1<f64>,
+    axis_ratios: PyReadonlyArray1<f64>,
+    ms_real: PyReadonlyArray1<f64>,
+    ms_imag: PyReadonlyArray1<f64>,
+    geometries: Vec<(f64, f64, f64, f64, f64, f64)>,
+    thet_nodes: PyReadonlyArray1<f64>,
+    thet_weights: PyReadonlyArray1<f64>,
+    phi_nodes: PyReadonlyArray1<f64>,
+    phi_weights: PyReadonlyArray1<f64>,
+    rat: f64,
+    lam: f64,
+    np: i32,
+    ddelt: f64,
+    ndgs: usize,
+) -> PyResult<(
+    Bound<'py, PyArray4<Complex64>>,
+    Bound<'py, PyArray4<f64>>,
+    Bound<'py, numpy::PyArray3<f64>>,
+    Bound<'py, numpy::PyArray3<f64>>,
+    Bound<'py, numpy::PyArray3<f64>>,
+)> {
+    let d = diameters.as_slice()?;
+    let eps = axis_ratios.as_slice()?;
+    let mr = ms_real.as_slice()?;
+    let mi = ms_imag.as_slice()?;
+    let n = d.len();
+    if eps.len() != n || mr.len() != n || mi.len() != n {
+        return Err(PyValueError::new_err(
+            "diameters, axis_ratios, ms_real, ms_imag must have the same length",
+        ));
+    }
+    let tn = thet_nodes.as_slice()?.to_vec();
+    let tw = thet_weights.as_slice()?.to_vec();
+    let pn = phi_nodes.as_slice()?.to_vec();
+    let pw = phi_weights.as_slice()?.to_vec();
+    if tn.len() != tw.len() || pn.len() != pw.len() {
+        return Err(PyValueError::new_err(
+            "thet/phi node and weight arrays must have matching lengths",
+        ));
+    }
+    if geometries.is_empty() || tn.is_empty() || pn.is_empty() {
+        return Err(PyValueError::new_err(
+            "geometries, thet_nodes, phi_nodes must all be non-empty",
+        ));
+    }
+    if lam <= 0.0 {
+        return Err(PyValueError::new_err("lam must be positive"));
+    }
+
+    let d: Vec<f64> = d.to_vec();
+    let eps: Vec<f64> = eps.to_vec();
+    let mr: Vec<f64> = mr.to_vec();
+    let mi: Vec<f64> = mi.to_vec();
+    let ng = geometries.len();
+    let rad_to_deg = 180.0 / std::f64::consts::PI;
+    let deg_to_rad = std::f64::consts::PI / 180.0;
+
+    let mut s_flat = vec![Complex64::new(0.0, 0.0); n * ng * 4];
+    let mut z_flat = vec![0.0_f64; n * ng * 16];
+    let mut sca_flat = vec![0.0_f64; n * ng * 2];
+    let mut ext_flat = vec![0.0_f64; n * ng * 2];
+    let mut asym_flat = vec![0.0_f64; n * ng * 2];
+    let s_stride = ng * 4;
+    let z_stride = ng * 16;
+    let ang_stride = ng * 2;
+
+    py.allow_threads(|| {
+        s_flat
+            .par_chunks_mut(s_stride)
+            .zip(z_flat.par_chunks_mut(z_stride))
+            .zip(sca_flat.par_chunks_mut(ang_stride))
+            .zip(ext_flat.par_chunks_mut(ang_stride))
+            .zip(asym_flat.par_chunks_mut(ang_stride))
+            .enumerate()
+            .for_each(|(i, ((((s_row, z_row), sca_row), ext_row), asym_row))| {
+                let cfg = TMatrixConfig {
+                    axi: d[i] / 2.0,
+                    rat,
+                    lam,
+                    m: Complex64::new(mr[i], mi[i]),
+                    eps: eps[i],
+                    np,
+                    ddelt,
+                    ndgs,
+                };
+                let state = rs_calctmat(cfg);
+                for (g_idx, g) in geometries.iter().enumerate() {
+                    // ---- main S, Z at the geometry ----
+                    let (s_g, z_g) = calcampl(&state, lam, g.0, g.1, g.2, g.3, g.4, g.5);
+                    let s_off = g_idx * 4;
+                    s_row[s_off] = s_g[0][0];
+                    s_row[s_off + 1] = s_g[0][1];
+                    s_row[s_off + 2] = s_g[1][0];
+                    s_row[s_off + 3] = s_g[1][1];
+                    let z_off = g_idx * 16;
+                    for a in 0..4 {
+                        for b in 0..4 {
+                            z_row[z_off + a * 4 + b] = z_g[a][b];
+                        }
+                    }
+
+                    // ---- ext_xsect from optical theorem (forward S) ----
+                    let (s_fwd, _) = calcampl(&state, lam, g.0, g.0, g.2, g.2, g.4, g.5);
+                    let ao = g_idx * 2;
+                    ext_row[ao] = 2.0 * lam * s_fwd[1][1].im; // h_pol
+                    ext_row[ao + 1] = 2.0 * lam * s_fwd[0][0].im; // v_pol
+
+                    // ---- sca_xsect and asym via (θ, φ) product grid ----
+                    let thet0_deg = g.0;
+                    let phi0_deg = g.2;
+                    let cos_t0 = (thet0_deg * deg_to_rad).cos();
+                    let sin_t0 = (thet0_deg * deg_to_rad).sin();
+                    let p0_rad = phi0_deg * deg_to_rad;
+
+                    let mut sca_h = 0.0_f64;
+                    let mut sca_v = 0.0_f64;
+                    let mut cos_h = 0.0_f64;
+                    let mut cos_v = 0.0_f64;
+                    for (ti, &t_rad) in tn.iter().enumerate() {
+                        let sin_t = t_rad.sin();
+                        let cos_t = t_rad.cos();
+                        let t_deg = t_rad * rad_to_deg;
+                        let wt = tw[ti];
+                        for (pi, &p_rad) in pn.iter().enumerate() {
+                            let p_deg = p_rad * rad_to_deg;
+                            let wp = pw[pi];
+                            // Scattering-direction Z at (θ, φ), same
+                            // incident direction (thet0, phi0).
+                            let (_, z_scat) =
+                                calcampl(&state, lam, thet0_deg, t_deg, phi0_deg, p_deg, g.4, g.5);
+                            let z00 = z_scat[0][0];
+                            let z01 = z_scat[0][1];
+                            let i_h = z00 - z01;
+                            let i_v = z00 + z01;
+                            let w_sphere = wt * wp * sin_t;
+                            sca_h += i_h * w_sphere;
+                            sca_v += i_v * w_sphere;
+                            // cos(Θ_scat) * sin(θ) integrand. The Python
+                            // integrand carries the sin(θ) inside the
+                            // trig identity — unfold it explicitly here.
+                            let cos_theta =
+                                cos_t * cos_t0 + sin_t * sin_t0 * (p0_rad - p_rad).cos();
+                            let w_cos = wt * wp * sin_t * cos_theta;
+                            cos_h += i_h * w_cos;
+                            cos_v += i_v * w_cos;
+                        }
+                    }
+                    sca_row[ao] = sca_h;
+                    sca_row[ao + 1] = sca_v;
+                    asym_row[ao] = if sca_h > 0.0 { cos_h / sca_h } else { 0.0 };
+                    asym_row[ao + 1] = if sca_v > 0.0 { cos_v / sca_v } else { 0.0 };
+                }
+            });
+    });
+
+    let s_arr = ndarray::Array4::from_shape_vec((n, ng, 2, 2), s_flat)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let z_arr = ndarray::Array4::from_shape_vec((n, ng, 4, 4), z_flat)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let sca_arr = ndarray::Array3::from_shape_vec((n, ng, 2), sca_flat)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let ext_arr = ndarray::Array3::from_shape_vec((n, ng, 2), ext_flat)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let asym_arr = ndarray::Array3::from_shape_vec((n, ng, 2), asym_flat)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok((
+        s_arr.into_pyarray_bound(py),
+        z_arr.into_pyarray_bound(py),
+        sca_arr.into_pyarray_bound(py),
+        ext_arr.into_pyarray_bound(py),
+        asym_arr.into_pyarray_bound(py),
+    ))
+}
+
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<TMatrixHandle>()?;
     m.add_function(wrap_pyfunction!(calctmat, m)?)?;
     m.add_function(wrap_pyfunction!(calcampl_py, m)?)?;
     m.add_function(wrap_pyfunction!(tabulate_scatter_table, m)?)?;
     m.add_function(wrap_pyfunction!(tabulate_scatter_table_orient_avg, m)?)?;
+    m.add_function(wrap_pyfunction!(tabulate_scatter_table_with_angular, m)?)?;
     m.add_function(wrap_pyfunction!(mie_qsca, m)?)?;
     m.add_function(wrap_pyfunction!(mie_qext, m)?)?;
     // Shape constants.

@@ -115,7 +115,6 @@ pub fn qext(x: f64, m: Complex64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use approx::assert_abs_diff_eq;
 
     #[test]
     fn rayleigh_limit_small_sphere() {
@@ -176,8 +175,14 @@ mod spot_tests {
         let qe = qext(10.0, Complex64::new(1.33, 0.01));
         let rel_s = (qs - 1.872112).abs() / 1.872112;
         let rel_e = (qe - 2.249241).abs() / 2.249241;
-        assert!(rel_s < 1e-4, "Q_sca(x=10,m=1.33+0.01i) = {qs:.6}, rel err {rel_s:.2e}");
-        assert!(rel_e < 1e-4, "Q_ext(x=10,m=1.33+0.01i) = {qe:.6}, rel err {rel_e:.2e}");
+        assert!(
+            rel_s < 1e-4,
+            "Q_sca(x=10,m=1.33+0.01i) = {qs:.6}, rel err {rel_s:.2e}"
+        );
+        assert!(
+            rel_e < 1e-4,
+            "Q_ext(x=10,m=1.33+0.01i) = {qe:.6}, rel err {rel_e:.2e}"
+        );
         assert!(qe > qs, "Q_ext must exceed Q_sca for absorbing sphere");
     }
 }

@@ -158,6 +158,62 @@ def bench_psd_tabulate(num_points):
     return _time(py_fn, 3), _time(rs_fn, 3)
 
 
+def bench_psd_tabulate_angular(num_points):
+    """PSD tabulation with angular_integration=True (sca_xsect/ext_xsect/asym)."""
+    kwargs = dict(wavelength=6.5, m=complex(1.5, 0.5), axis_ratio=1.0,
+                  ddelt=1e-4, ndgs=2)
+
+    def py_fn():
+        s = py_tm.Scatterer(**kwargs)
+        s.set_geometry(geom_horiz_back)
+        s.psd_integrator = py_psd.PSDIntegrator()
+        s.psd_integrator.num_points = num_points
+        s.psd_integrator.D_max = 10.0
+        s.psd = py_psd.GammaPSD(D0=1.0, Nw=1e3, mu=4)
+        s.psd_integrator.init_scatter_table(s, angular_integration=True)
+
+    def rs_fn():
+        s = Scatterer(**kwargs)
+        s.set_geometry(geom_horiz_back)
+        s.psd_integrator = rs_psd.PSDIntegrator()
+        s.psd_integrator.num_points = num_points
+        s.psd_integrator.D_max = 10.0
+        s.psd = rs_psd.GammaPSD(D0=1.0, Nw=1e3, mu=4)
+        s.psd_integrator.init_scatter_table(s, angular_integration=True)
+
+    return _time(py_fn, 2), _time(rs_fn, 2)
+
+
+def bench_psd_tabulate_orient_adaptive(num_points):
+    """PSD tabulation with orient_averaged_adaptive (scipy.dblquad on pytmatrix side)."""
+    kwargs = dict(wavelength=6.283185307, m=complex(1.5, 0.01), axis_ratio=1.5,
+                  ddelt=1e-4, ndgs=2)
+
+    def py_fn():
+        s = py_tm.Scatterer(**kwargs)
+        s.set_geometry(geom_horiz_back)
+        s.or_pdf = py_orient.gaussian_pdf(std=20.0, mean=90.0)
+        s.orient = py_orient.orient_averaged_adaptive
+        s.psd_integrator = py_psd.PSDIntegrator()
+        s.psd_integrator.num_points = num_points
+        s.psd_integrator.D_max = 3.0
+        s.psd = py_psd.GammaPSD(D0=1.0, Nw=1e3, mu=4)
+        s.psd_integrator.init_scatter_table(s)
+
+    def rs_fn():
+        s = Scatterer(**kwargs)
+        s.set_geometry(geom_horiz_back)
+        s.or_pdf = rs_orient.gaussian_pdf(std=20.0, mean=90.0)
+        s.orient = rs_orient.orient_averaged_adaptive
+        s.psd_integrator = rs_psd.PSDIntegrator()
+        s.psd_integrator.num_points = num_points
+        s.psd_integrator.D_max = 3.0
+        s.psd = rs_psd.GammaPSD(D0=1.0, Nw=1e3, mu=4)
+        s.psd_integrator.init_scatter_table(s)
+
+    return _time(py_fn, 1), _time(rs_fn, 2)
+
+
 def bench_tmatrix_only():
     """Just the T-matrix computation (CALCTMAT), no amplitude evaluation."""
     radius, wl = 1.5, 6.283185307
@@ -188,6 +244,12 @@ def main():
          lambda: bench_psd_tabulate_orient_avg(32)),
         ("PSD + orient-avg (4×8), 64 points",
          lambda: bench_psd_tabulate_orient_avg(64)),
+        ("PSD + angular_integration, 32 points",
+         lambda: bench_psd_tabulate_angular(32)),
+        ("PSD + angular_integration, 64 points",
+         lambda: bench_psd_tabulate_angular(64)),
+        ("PSD + orient-adaptive, 4 points",
+         lambda: bench_psd_tabulate_orient_adaptive(4)),
     ]
 
     print(f"{'case':<44} {'pytmatrix':>12} {'rupytmatrix':>14} {'speedup':>10}")
