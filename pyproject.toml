@@ -34,8 +34,11 @@ dependencies = [
 test = [
     "pytest>=7",
     "pytest-xdist",
-    "numpy>=1.23",
-    "scipy>=1.10",
+    # Pinned < 2 because pytmatrix's Fortran extension is built against
+    # numpy's 1.x C API (numpy.distutils + f2py). numpy 2.x breaks that
+    # ABI. scipy >= 1.14 requires numpy 2, so cap it too.
+    "numpy>=1.23,<2",
+    "scipy>=1.10,<1.14",
 ]
 dev = [
     "maturin>=1.5",

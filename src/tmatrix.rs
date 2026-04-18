@@ -627,14 +627,21 @@ pub fn tmatr(m: usize, state: &mut TMatrixState, ncheck: bool) {
     let mut rg22 = vec![[0.0; 2]; nm * nm];
 
     let dm = m as f64;
+    let dmsq = dm * dm;
     for n1 in m..=nmax {
         let an1 = state.an[n1];
         for n2 in m..=nmax {
             let an2 = state.an[n2];
-            // Symmetry skip mirrors TMATR0.
-            if ncheck && sig[n1 + n2] < 0.0 {
-                continue;
-            }
+            // Per-parity symmetry (NCHECK in Fortran TMATR):
+            //   n1+n2 odd  → only Q11/Q22 are non-zero (Q12/Q21 vanish)
+            //   n1+n2 even → only Q12/Q21 are non-zero (Q11/Q22 vanish)
+            // Unlike TMATR0, we never skip the whole pair; instead we guard
+            // each sub-block inside the i-loop.  The Fortran equivalent uses
+            // labelled GOTOs to achieve the same selective accumulation.
+            let si = sig[n1 + n2]; // = (-1)^(n1+n2)
+            let do_q11_q22 = !ncheck || si < 0.0; // odd n1+n2 or no check
+            let do_q12_q21 = !ncheck || si > 0.0; // even n1+n2 or no check
+
             let mut ar11 = 0.0;
             let mut ai11 = 0.0;
             let mut ar12 = 0.0;
@@ -662,7 +669,8 @@ pub fn tmatr(m: usize, state: &mut TMatrixState, ncheck: bool) {
                 let a21 = d2n1 * d1n2;
                 let a22 = d2n1 * d2n2;
                 let aa1 = a12 + a21;
-                let aa2 = a11 * state.ss[i] + a22;
+                // Fortran: AA2 = A11*DSS(I) + A22  where DSS(I) = SS(I)*M^2
+                let aa2 = a11 * state.ss[i] * dmsq + a22;
 
                 let qj1 = state.j[i * nmax + (n1 - 1)];
                 let qy1 = state.y[i * nmax + (n1 - 1)];
@@ -720,32 +728,40 @@ pub fn tmatr(m: usize, state: &mut TMatrixState, ncheck: bool) {
                 let dsi = state.s[i];
                 let rri = rr[i];
 
-                let e1 = dsi * dm * aa1;
-                ar11 += e1 * b1r;
-                ai11 += e1 * b1i;
-                gr11 += e1 * c1r;
-                gi11 += e1 * c1i;
+                // Q11/Q22: non-zero when n1+n2 is odd (or no symmetry check).
+                // Fortran: E1 = DS(I)*AA1  where DS(I) = S(I)*M*W(I)*R(I)
+                if do_q11_q22 {
+                    let e1 = dsi * dm * rri * aa1;
+                    ar11 += e1 * b1r;
+                    ai11 += e1 * b1i;
+                    gr11 += e1 * c1r;
+                    gi11 += e1 * c1i;
 
-                let f1 = rri * aa2;
-                let f2 = rri * uri * an1 * a12;
-                ar12 += f1 * b2r + f2 * b3r;
-                ai12 += f1 * b2i + f2 * b3i;
-                gr12 += f1 * c2r + f2 * c3r;
-                gi12 += f1 * c2i + f2 * c3i;
+                    // Fortran: E2 = DS(I)*URI*A11, E3 = E2*AN2, E2 = E2*AN1
+                    let e2_base = dsi * dm * rri * uri * a11;
+                    let e3 = e2_base * an2;
+                    let e2p = e2_base * an1;
+                    ar22 += e1 * b6r + e3 * b8r + e2p * b7r;
+                    ai22 += e1 * b6i + e3 * b8i + e2p * b7i;
+                    gr22 += e1 * c6r + e3 * c8r + e2p * c7r;
+                    gi22 += e1 * c6i + e3 * c8i + e2p * c7i;
+                }
 
-                let f2 = rri * uri * an2 * a21;
-                ar21 += f1 * b4r + f2 * b5r;
-                ai21 += f1 * b4i + f2 * b5i;
-                gr21 += f1 * c4r + f2 * c5r;
-                gi21 += f1 * c4i + f2 * c5i;
+                // Q12/Q21: non-zero when n1+n2 is even (or no symmetry check).
+                if do_q12_q21 {
+                    let f1 = rri * aa2;
+                    let f2 = rri * uri * an1 * a12;
+                    ar12 += f1 * b2r + f2 * b3r;
+                    ai12 += f1 * b2i + f2 * b3i;
+                    gr12 += f1 * c2r + f2 * c3r;
+                    gi12 += f1 * c2i + f2 * c3i;
 
-                let e2 = dsi * uri * a11;
-                let e3 = e2 * an2;
-                let e2p = e2 * an1;
-                ar22 += e1 * b6r + e3 * b8r + e2p * b7r;
-                ai22 += e1 * b6i + e3 * b8i + e2p * b7i;
-                gr22 += e1 * c6r + e3 * c8r + e2p * c7r;
-                gi22 += e1 * c6i + e3 * c8i + e2p * c7i;
+                    let f2 = rri * uri * an2 * a21;
+                    ar21 += f1 * b4r + f2 * b5r;
+                    ai21 += f1 * b4i + f2 * b5i;
+                    gr21 += f1 * c4r + f2 * c5r;
+                    gi21 += f1 * c4i + f2 * c5i;
+                }
             }
 
             let an12 = state.ann[n1][n2] * factor;
@@ -798,17 +814,17 @@ pub fn tmatr(m: usize, state: &mut TMatrixState, ncheck: bool) {
             let rgr11 = npr * tgr21 - npi * tgi21 + nppi * tgr12;
             let rgi11 = npr * tgi21 + npi * tgr21 + nppi * tgi12;
 
-            // Block (1,2)
-            let qr12 = npr * tar22 - npi * tai22 + nppi * tar11;
-            let qi12 = npr * tai22 + npi * tar22 + nppi * tai11;
-            let rgr12 = npr * tgr22 - npi * tgi22 + nppi * tgr11;
-            let rgi12 = npr * tgi22 + npi * tgr22 + nppi * tgi11;
+            // Block (1,2): Fortran TQR(K1,KK2) = TPIR*TAR11 + TPPI*TAR22
+            let qr12 = npr * tar11 - npi * tai11 + nppi * tar22;
+            let qi12 = npr * tai11 + npi * tar11 + nppi * tai22;
+            let rgr12 = npr * tgr11 - npi * tgi11 + nppi * tgr22;
+            let rgi12 = npr * tgi11 + npi * tgr11 + nppi * tgi22;
 
-            // Block (2,1)
-            let qr21 = npr * tar11 - npi * tai11 + nppi * tar22;
-            let qi21 = npr * tai11 + npi * tar11 + nppi * tai22;
-            let rgr21 = npr * tgr11 - npi * tgi11 + nppi * tgr22;
-            let rgi21 = npr * tgi11 + npi * tgr11 + nppi * tgi22;
+            // Block (2,1): Fortran TQR(KK1,K2) = TPIR*TAR22 + TPPI*TAR11
+            let qr21 = npr * tar22 - npi * tai22 + nppi * tar11;
+            let qi21 = npr * tai22 + npi * tar22 + nppi * tai11;
+            let rgr21 = npr * tgr22 - npi * tgi22 + nppi * tgr11;
+            let rgi21 = npr * tgi22 + npi * tgr22 + nppi * tgi11;
 
             // Block (2,2)
             let qr22 = npr * tar12 - npi * tai12 + nppi * tar21;
@@ -893,6 +909,143 @@ mod tests {
                 assert!(v.re.is_finite());
                 assert!(v.im.is_finite());
             }
+        }
+    }
+
+    /// Check m>=1 T-matrix blocks for a sphere also match Mie theory.
+    /// For a sphere T^(m)_{n,n} must equal T^(0)_{n,n} for every azimuthal
+    /// order m (rotational symmetry).
+    #[test]
+    fn sphere_tmatr_m1_matches_m0() {
+        let lam = 6.283185307_f64;
+        let cfg = TMatrixConfig {
+            axi: 1.0,
+            rat: 1.0,
+            lam,
+            m: Complex64::new(1.33, 0.01),
+            eps: 1.0,
+            np: -1,
+            ddelt: 1e-6,
+            ndgs: 2,
+        };
+        let state = calctmat(cfg);
+        let nmax = state.nmax;
+        let t0 = &state.t[0];
+        let t1 = &state.t[1];
+
+        eprintln!("\n--- sphere m=1 vs m=0 block diagonal (nmax={nmax}) ---");
+        eprintln!("  {:>3}  {:>28}  {:>28}  {:>28}  {:>28}", "n",
+            "T0-11", "T1-11", "T0-22", "T1-22");
+        for n in 1..=nmax {
+            let t0_11 = t0[(n-1, n-1)];
+            let t1_11 = t1[(n-1, n-1)];
+            let t0_22 = t0[(n-1+nmax, n-1+nmax)];
+            let t1_22 = t1[(n-1+nmax, n-1+nmax)];
+            eprintln!("  {n:>3}  {:>12.4e}{:+12.4e}i  {:>12.4e}{:+12.4e}i  {:>12.4e}{:+12.4e}i  {:>12.4e}{:+12.4e}i",
+                t0_11.re, t0_11.im, t1_11.re, t1_11.im,
+                t0_22.re, t0_22.im, t1_22.re, t1_22.im);
+        }
+
+        for n in 1..=nmax {
+            let t0_11 = t0[(n-1, n-1)];
+            let t1_11 = t1[(n-1, n-1)];
+            let t0_22 = t0[(n-1+nmax, n-1+nmax)];
+            let t1_22 = t1[(n-1+nmax, n-1+nmax)];
+            let tol = 0.01;
+            let norm11 = t0_11.norm().max(1e-30);
+            let norm22 = t0_22.norm().max(1e-30);
+            assert!(
+                (t1_11 - t0_11).norm() / norm11 < tol,
+                "n={n}: T(m=1)_11={t1_11} ≠ T(m=0)_11={t0_11}"
+            );
+            assert!(
+                (t1_22 - t0_22).norm() / norm22 < tol,
+                "n={n}: T(m=1)_22={t1_22} ≠ T(m=0)_22={t0_22}"
+            );
+        }
+    }
+
+    /// Step-1 internal consistency: sphere T-matrix (axis_ratio=1) must match
+    /// the Mie coefficients from `mie.rs`.
+    ///
+    /// For a sphere Mishchenko's T-matrix reduces to:
+    ///   T^(0)_{n,n} block(1,1) = -b_n  (TM / magnetic Mie coeff)
+    ///   T^(0)_{n,n} block(2,2) = -a_n  (TE / electric Mie coeff)
+    ///
+    /// Any disagreement here pins the bug entirely inside tmatrix.rs /
+    /// amplitude.rs before any Python-boundary effects.
+    #[test]
+    fn sphere_tmatrix_matches_mie() {
+        use crate::mie;
+
+        let lam = 6.283185307_f64; // 2π → x = radius for radius=1
+        let pi = std::f64::consts::PI;
+
+        // Three (radius, m) pairs matching the parity test cases.
+        let cases: &[(f64, Complex64)] = &[
+            (0.5, Complex64::new(1.33, 0.0)),
+            (1.0, Complex64::new(1.33, 0.01)),
+            (2.0, Complex64::new(1.5, 0.001)),
+        ];
+
+        for &(radius, m) in cases {
+            let x = 2.0 * pi * radius / lam; // size parameter
+
+            let cfg = TMatrixConfig {
+                axi: radius,
+                rat: 1.0,
+                lam,
+                m,
+                eps: 1.0, // sphere
+                np: -1,
+                ddelt: 1e-6,
+                ndgs: 2,
+            };
+            let state = calctmat(cfg);
+            let nmax = state.nmax;
+            let mie_c = mie::mie(x, m);
+            let t = &state.t[0];
+
+            eprintln!(
+                "\n--- sphere x={x:.3}, m={m}, nmax={nmax} ---"
+            );
+            eprintln!(
+                "  {:>3}  {:>24}  {:>24}  {:>24}  {:>24}",
+                "n", "T11 (got)", "-b_n (mie)", "T22 (got)", "-a_n (mie)"
+            );
+
+            for n in 1..=nmax.min(mie_c.a.len()) {
+                let t11 = t[(n - 1, n - 1)];
+                let t22 = t[(n - 1 + nmax, n - 1 + nmax)];
+                let neg_an = -mie_c.a[n - 1];
+                let neg_bn = -mie_c.b[n - 1];
+                eprintln!(
+                    "  {n:>3}  {:>12.6e}{:+12.6e}i  {:>12.6e}{:+12.6e}i  {:>12.6e}{:+12.6e}i  {:>12.6e}{:+12.6e}i",
+                    t11.re, t11.im, neg_bn.re, neg_bn.im,
+                    t22.re, t22.im, neg_an.re, neg_an.im
+                );
+            }
+
+            // Assert first non-negligible n to 1 % relative error.
+            // For a sphere T^(0) diagonal is the only non-zero block.
+            let n = 1;
+            let t11 = t[(n - 1, n - 1)];
+            let t22 = t[(n - 1 + nmax, n - 1 + nmax)];
+            let neg_an = -mie_c.a[n - 1];
+            let neg_bn = -mie_c.b[n - 1];
+
+            // Try both assignments and assert the one that matches.
+            let tol = 0.02; // 2 % — tight enough to catch a 7× error
+            let t11_matches_neg_bn = (t11 - neg_bn).norm() / neg_bn.norm().max(1e-30) < tol;
+            let t22_matches_neg_an = (t22 - neg_an).norm() / neg_an.norm().max(1e-30) < tol;
+            let t11_matches_neg_an = (t11 - neg_an).norm() / neg_an.norm().max(1e-30) < tol;
+            let t22_matches_neg_bn = (t22 - neg_bn).norm() / neg_bn.norm().max(1e-30) < tol;
+
+            assert!(
+                (t11_matches_neg_bn && t22_matches_neg_an)
+                    || (t11_matches_neg_an && t22_matches_neg_bn),
+                "sphere x={x:.3}: T11={t11}, T22={t22} do not match Mie -b_n={neg_bn}, -a_n={neg_an} (tol={tol})"
+            );
         }
     }
 }

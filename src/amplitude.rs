@@ -49,10 +49,10 @@ pub fn calcampl(
     z[2][0] = -re(s11 * c(s21)) - re(s22 * c(s12));
     z[2][1] = -re(s11 * c(s21)) + re(s22 * c(s12));
     z[2][2] = re(s11 * c(s22)) + re(s12 * c(s21));
-    z[2][3] = -im(s11 * c(s22)) - im(s21 * c(s12));
+    z[2][3] = im(s11 * c(s22)) + im(s21 * c(s12));
     z[3][0] = im(s21 * c(s11)) + im(s22 * c(s12));
     z[3][1] = im(s21 * c(s11)) - im(s22 * c(s12));
-    z[3][2] = -im(s22 * c(s11)) + im(s12 * c(s21));
+    z[3][2] = im(s22 * c(s11)) - im(s12 * c(s21));
     z[3][3] = re(s22 * c(s11)) - re(s12 * c(s21));
 
     let mut s_out = [[Complex64::new(0.0, 0.0); 2]; 2];

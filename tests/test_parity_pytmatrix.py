@@ -54,7 +54,6 @@ def test_sphere_parity(PyScatterer, radius, wavelength, mrr, mri):
     _compare(py, rs, s_tol=1e-3, z_tol=1e-3)
 
 
-@pytest.mark.xfail(reason="T-matrix block assembly sign/index conventions need verification")
 @pytest.mark.parametrize(
     "radius, wavelength, axis_ratio",
     [
@@ -75,7 +74,6 @@ def test_spheroid_parity(PyScatterer, radius, wavelength, axis_ratio):
     _compare(py, rs, s_tol=5e-3, z_tol=5e-3)
 
 
-@pytest.mark.xfail(reason="T-matrix block assembly sign/index conventions need verification")
 def test_cylinder_parity(PyScatterer):
     geom = (90.0, 90.0, 0.0, 180.0, 0.0, 0.0)
     m = complex(1.5, 0.01)
