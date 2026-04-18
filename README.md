@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/icon.svg" alt="rupytmatrix icon" width="160" height="160">
+</p>
+
 # rupytmatrix
 
 **Rust-backed T-matrix scattering for nonspherical particles.**

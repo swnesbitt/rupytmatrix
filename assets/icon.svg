@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="rupytmatrix — T-matrix scattering from a nonspherical particle, rendered with matrix brackets">
+  <title>rupytmatrix</title>
+  <defs>
+    <!-- Rust-orange → Python-blue diagonal, the two halves of the project. -->
+    <linearGradient id="rp" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"  stop-color="#F0AD3D"/>
+      <stop offset="55%" stop-color="#D0421B"/>
+      <stop offset="100%" stop-color="#2C4C7C"/>
+    </linearGradient>
+    <!-- Particle fill: hot core fading to orange. -->
+    <radialGradient id="particle" cx="42%" cy="38%" r="70%">
+      <stop offset="0%"  stop-color="#FFD66B"/>
+      <stop offset="55%" stop-color="#E06A1F"/>
+      <stop offset="100%" stop-color="#8A2A0C"/>
+    </radialGradient>
+    <!-- Subtle inner glow around the particle. -->
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#F5B041" stop-opacity="0.45"/>
+      <stop offset="70%"  stop-color="#F5B041" stop-opacity="0.0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Rounded-square background, Python-navy. -->
+  <rect width="256" height="256" rx="44" ry="44" fill="#101828"/>
+
+  <!-- Gauss-Legendre lattice: faint grid hinting at quadrature nodes. -->
+  <g stroke="#2C3E6B" stroke-width="1" opacity="0.35">
+    <path d="M 48 80  H 208"/>
+    <path d="M 48 128 H 208"/>
+    <path d="M 48 176 H 208"/>
+    <path d="M 80  48 V 208"/>
+    <path d="M 128 48 V 208"/>
+    <path d="M 176 48 V 208"/>
+  </g>
+
+  <!-- Incoming plane wave from the left (Python blue). -->
+  <g stroke="#3776AB" stroke-width="3" stroke-linecap="round" opacity="0.9">
+    <path d="M 20 104 H 44"/>
+    <path d="M 20 128 H 44"/>
+    <path d="M 20 152 H 44"/>
+  </g>
+
+  <!-- Outgoing scattered wavefronts: concentric oblate-spheroid isophases. -->
+  <g fill="none" stroke="url(#rp)" stroke-linecap="round">
+    <ellipse cx="128" cy="128" rx="58"  ry="36"  stroke-width="2.2" opacity="0.85"/>
+    <ellipse cx="128" cy="128" rx="78"  ry="48"  stroke-width="2"   opacity="0.55"/>
+    <ellipse cx="128" cy="128" rx="98"  ry="60"  stroke-width="1.6" opacity="0.30"/>
+  </g>
+
+  <!-- Soft glow behind the particle. -->
+  <circle cx="128" cy="128" r="60" fill="url(#glow)"/>
+
+  <!-- Central oblate spheroid — the T-matrix target. -->
+  <g>
+    <ellipse cx="128" cy="128" rx="38" ry="23" fill="url(#particle)"/>
+    <!-- Specular highlight. -->
+    <ellipse cx="118" cy="120" rx="14" ry="6" fill="#FFE8B5" opacity="0.55"/>
+    <!-- Rim to make the shape pop against the dark bg. -->
+    <ellipse cx="128" cy="128" rx="38" ry="23" fill="none" stroke="#FFD66B" stroke-width="1.2" opacity="0.85"/>
+  </g>
+
+  <!-- Matrix brackets in the corners — the "T" of T-matrix. -->
+  <g fill="none" stroke="#E6EEF8" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <!-- top-left -->
+    <path d="M 54 36 H 34 V 70"/>
+    <!-- top-right -->
+    <path d="M 202 36 H 222 V 70"/>
+    <!-- bottom-left -->
+    <path d="M 54 220 H 34 V 186"/>
+    <!-- bottom-right -->
+    <path d="M 202 220 H 222 V 186"/>
+  </g>
+</svg>
