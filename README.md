@@ -156,6 +156,43 @@ Fully implemented and unit-tested (`cargo test --lib`, `pytest`):
   `radar.py`, works on both single orientations and PSD-integrated
   scatterers).
 
+## Performance
+
+Against the Fortran `pytmatrix` backend on the same machine (Apple M-series,
+`benches/bench_vs_pytmatrix.py`; positive ratio = rupytmatrix faster):
+
+| Workload | pytmatrix (Fortran) | rupytmatrix (Rust) | Speedup |
+|---|---:|---:|---:|
+| `calctmat` only (spheroid, ax = 1.5) | 0.23 ms | 0.21 ms | 1.07× |
+| Single orientation, cold (fresh `Scatterer`) | 0.22 ms | 0.27 ms | 0.84× (slower) |
+| Cached re-evaluation (warm T-matrix) | 0.01 ms | 0.00 ms | 1.70× |
+| Orientation-averaged fixed (4 × 8 = 32 orientations) | 4.34 ms | 0.71 ms | **6.1×** |
+| PSD `init_scatter_table`, 32 points | 6.92 ms | 1.95 ms | **3.5×** |
+| PSD `init_scatter_table`, 64 points | 13.57 ms | 3.27 ms | **4.2×** |
+| PSD + orient-avg (4 × 8), 32 points | 13.74 ms | 1.56 ms | **8.8×** |
+| PSD + orient-avg (4 × 8), 64 points | 23.59 ms | 2.38 ms | **9.9×** |
+
+Headline notes:
+
+* The core T-matrix solve is roughly tied — heavily-optimised Fortran plus
+  LAPACK is hard to beat on pure linear algebra, so "comparable" is the
+  expected result there.
+* The big wins come from moving the outer loops into Rust: orientation
+  averaging (~6× on a single particle) and especially PSD tabulation
+  (~4× single-orient, ~10× combined with orient averaging), because the
+  per-diameter T-matrix solves are independent and `rayon` parallelises
+  them across cores with the GIL released.
+* The ~16% slowdown on the "single orient cold" case is Python/PyO3
+  boundary overhead that F2PY avoids. It disappears as soon as the
+  T-matrix is reused (cached re-eval, orientation averaging, PSD tabulation).
+
+Reproduce with:
+
+```bash
+pip install pytmatrix    # needs gfortran
+python benches/bench_vs_pytmatrix.py
+```
+
 ## Running the tests
 
 ```bash
