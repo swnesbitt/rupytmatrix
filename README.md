@@ -124,7 +124,7 @@ with `python benches/bench_vs_pytmatrix.py`.
 
 ### 2. Hydrometeor mixtures (`HydroMix`)
 
-Radar volumes rarely contain a single species. The new `rustmatrix.hd_mix`
+Radar volumes sometimes contain more than a single species. The new `rustmatrix.hd_mix`
 module combines multiple `(Scatterer, PSD)` pairs — each with its own
 refractive index, axis ratio, shape, and orientation PDF — into one
 Scatterer-shaped object that feeds straight into the existing
