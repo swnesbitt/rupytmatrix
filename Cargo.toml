@@ -1,17 +1,17 @@
 [package]
-name = "rupytmatrix"
+name = "rustmatrix"
 version = "0.1.0"
 edition = "2021"
 authors = ["Stephen Nesbitt <snesbitt@illinois.edu>"]
 license = "MIT"
 description = "Rust-backed T-matrix scattering for nonspherical particles (port of pytmatrix)"
-repository = "https://github.com/swnesbitt/rupytmatrix"
+repository = "https://github.com/swnesbitt/rustmatrix"
 readme = "README.md"
 keywords = ["scattering", "t-matrix", "radar", "electromagnetic", "mie"]
 categories = ["science", "mathematics"]
 
 [lib]
-name = "rupytmatrix"
+name = "rustmatrix"
 # `cdylib` is needed to produce the Python extension;
 # `rlib` lets `cargo test` run the tests in the library crate.
 crate-type = ["cdylib", "rlib"]

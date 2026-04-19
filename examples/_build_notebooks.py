@@ -1,0 +1,395 @@
+"""Generate the five tutorial notebooks from per-tutorial cell specs.
+
+The `.py` scripts are the source of truth for the tutorial code. The
+notebooks wrap that code with narrative markdown and matplotlib plots.
+Re-run this file after editing a tutorial to keep the notebooks in sync:
+
+    python examples/_build_notebooks.py
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+
+def md(*lines: str) -> dict:
+    return {"cell_type": "markdown", "metadata": {}, "source": list(lines)}
+
+
+def code(*lines: str) -> dict:
+    return {
+        "cell_type": "code",
+        "metadata": {},
+        "execution_count": None,
+        "outputs": [],
+        "source": list(lines),
+    }
+
+
+def notebook(cells: list[dict]) -> dict:
+    return {
+        "cells": cells,
+        "metadata": {
+            "kernelspec": {
+                "display_name": "Python 3",
+                "language": "python",
+                "name": "python3",
+            },
+            "language_info": {
+                "name": "python",
+                "version": "3.11",
+            },
+        },
+        "nbformat": 4,
+        "nbformat_minor": 5,
+    }
+
+
+NB01 = [
+    md(
+        "# Tutorial 01 — A dielectric sphere at X-band, checked against Mie\n",
+        "\n",
+        "A T-matrix solver for nonspherical particles must reduce to classical\n",
+        "Mie theory in the `axis_ratio = 1` limit. That reduction is the\n",
+        "simplest end-to-end check we can do. This tutorial builds a 1 mm\n",
+        "water sphere at X-band, computes its scattering and extinction\n",
+        "cross-sections via the T-matrix path, and compares against the\n",
+        "closed-form Mie expressions shipped with rustmatrix.\n",
+    ),
+    code(
+        "import numpy as np\n",
+        "import matplotlib.pyplot as plt\n",
+        "\n",
+        "from rustmatrix import Scatterer, mie_qsca, mie_qext, scatter\n",
+        "from rustmatrix.tmatrix_aux import geom_horiz_back, wl_X\n",
+        "from rustmatrix.refractive import m_w_10C\n",
+    ),
+    md("## Build a sphere scatterer at X-band\n"),
+    code(
+        "radius_mm = 1.0\n",
+        "wavelength_mm = wl_X\n",
+        "m = m_w_10C[wl_X]\n",
+        "\n",
+        "s = Scatterer(radius=radius_mm, wavelength=wavelength_mm, m=m,\n",
+        "              axis_ratio=1.0, ddelt=1e-4, ndgs=2)\n",
+        "s.set_geometry(geom_horiz_back)\n",
+        "S, Z = s.get_SZ()\n",
+        "S\n",
+    ),
+    md("## Cross-sections — T-matrix vs Mie\n"),
+    code(
+        "size_param = 2.0 * np.pi * radius_mm / wavelength_mm\n",
+        "sigma_sca_tm = scatter.sca_xsect(s, h_pol=True)\n",
+        "sigma_ext_tm = scatter.ext_xsect(s, h_pol=True)\n",
+        "\n",
+        "geom = np.pi * radius_mm ** 2\n",
+        "sigma_sca_mie = mie_qsca(size_param, m.real, m.imag) * geom\n",
+        "sigma_ext_mie = mie_qext(size_param, m.real, m.imag) * geom\n",
+        "\n",
+        "print(f'rel err σ_sca = {abs(sigma_sca_tm-sigma_sca_mie)/sigma_sca_mie:.2e}')\n",
+        "print(f'rel err σ_ext = {abs(sigma_ext_tm-sigma_ext_mie)/sigma_ext_mie:.2e}')\n",
+    ),
+    md("## Q_sca and Q_ext across a size-parameter sweep\n",
+       "\n",
+       "Plotting both curves side by side makes the Mie ripple pattern\n",
+       "visible and confirms that the T-matrix follows it point-for-point.\n"),
+    code(
+        "xs = np.linspace(0.1, 10.0, 40)\n",
+        "q_sca_mie = np.array([mie_qsca(x, m.real, m.imag) for x in xs])\n",
+        "q_ext_mie = np.array([mie_qext(x, m.real, m.imag) for x in xs])\n",
+        "q_sca_tm = np.empty_like(xs)\n",
+        "q_ext_tm = np.empty_like(xs)\n",
+        "for i, x in enumerate(xs):\n",
+        "    r = x * wavelength_mm / (2.0 * np.pi)\n",
+        "    si = Scatterer(radius=r, wavelength=wavelength_mm, m=m,\n",
+        "                   axis_ratio=1.0, ddelt=1e-4, ndgs=2)\n",
+        "    si.set_geometry(geom_horiz_back)\n",
+        "    g = np.pi * r ** 2\n",
+        "    q_sca_tm[i] = scatter.sca_xsect(si) / g\n",
+        "    q_ext_tm[i] = scatter.ext_xsect(si) / g\n",
+        "\n",
+        "fig, ax = plt.subplots(figsize=(7, 4))\n",
+        "ax.plot(xs, q_sca_mie, 'k-', label='Q_sca (Mie)')\n",
+        "ax.plot(xs, q_ext_mie, 'k--', label='Q_ext (Mie)')\n",
+        "ax.plot(xs, q_sca_tm, 'C1o', markersize=4, label='Q_sca (T-matrix)')\n",
+        "ax.plot(xs, q_ext_tm, 'C2s', markersize=4, label='Q_ext (T-matrix)')\n",
+        "ax.set_xlabel('size parameter  x = 2πr/λ')\n",
+        "ax.set_ylabel('efficiency')\n",
+        "ax.legend()\n",
+        "ax.grid(True, alpha=0.3)\n",
+        "fig.tight_layout();\n",
+    ),
+]
+
+
+NB02 = [
+    md(
+        "# Tutorial 02 — A single 2 mm raindrop at C-band\n",
+        "\n",
+        "Falling raindrops are flattened by drag; larger drops are more\n",
+        "oblate. Dual-pol radar picks this up as differential reflectivity\n",
+        "Z_dr — the ratio of horizontally- to vertically-polarised\n",
+        "backscattered power. This notebook computes Z_dr, Z_h, and δ_hv\n",
+        "for a single drop and sweeps the axis ratio to show the\n",
+        "sensitivity.\n",
+    ),
+    code(
+        "import numpy as np\n",
+        "import matplotlib.pyplot as plt\n",
+        "\n",
+        "from rustmatrix import Scatterer, radar\n",
+        "from rustmatrix.tmatrix_aux import (dsr_thurai_2007, geom_horiz_back,\n",
+        "                                      K_w_sqr, wl_C)\n",
+        "from rustmatrix.refractive import m_w_10C\n",
+    ),
+    md("## Build the drop and evaluate\n"),
+    code(
+        "D_mm = 2.0\n",
+        "axis_ratio = 1.0 / dsr_thurai_2007(D_mm)\n",
+        "s = Scatterer(radius=D_mm/2, wavelength=wl_C, m=m_w_10C[wl_C],\n",
+        "              axis_ratio=axis_ratio, Kw_sqr=K_w_sqr[wl_C],\n",
+        "              ddelt=1e-4, ndgs=2)\n",
+        "s.set_geometry(geom_horiz_back)\n",
+        "print(f'axis ratio (h/v) = {axis_ratio:.4f}')\n",
+        "print(f'Z_h = {10*np.log10(radar.refl(s, True)):.2f} dBZ')\n",
+        "print(f'Z_dr = {10*np.log10(radar.Zdr(s)):+.3f} dB')\n",
+        "print(f'δ_hv = {np.degrees(radar.delta_hv(s)):+.4f}°')\n",
+    ),
+    md("## Z_dr across the 0.5–5 mm drop-size range\n"),
+    code(
+        "Ds = np.linspace(0.5, 5.0, 20)\n",
+        "zdrs = np.empty_like(Ds)\n",
+        "for i, D in enumerate(Ds):\n",
+        "    s.radius = D / 2\n",
+        "    s.axis_ratio = 1.0 / dsr_thurai_2007(D)\n",
+        "    zdrs[i] = 10 * np.log10(radar.Zdr(s))\n",
+        "\n",
+        "fig, ax = plt.subplots(figsize=(7, 4))\n",
+        "ax.plot(Ds, zdrs, 'C0-o')\n",
+        "ax.set_xlabel('equivalent diameter D [mm]')\n",
+        "ax.set_ylabel('Z_dr [dB]')\n",
+        "ax.set_title('Single-drop Z_dr at C-band (Thurai 2007 shape)')\n",
+        "ax.grid(True, alpha=0.3)\n",
+        "fig.tight_layout();\n",
+    ),
+]
+
+
+NB03 = [
+    md(
+        "# Tutorial 03 — Gamma-PSD rain at C-band\n",
+        "\n",
+        "Radar volumes sample thousands of drops. The observed Z_h, Z_dr,\n",
+        "K_dp, and specific attenuation A_i are PSD-weighted integrals of\n",
+        "the single-drop quantities. This notebook tabulates S(D) and Z(D)\n",
+        "once, then sweeps the integrated observables across a range of\n",
+        "normalised gamma PSDs parameterised by the median volume diameter\n",
+        "D0.\n",
+    ),
+    code(
+        "import numpy as np\n",
+        "import matplotlib.pyplot as plt\n",
+        "\n",
+        "from rustmatrix import Scatterer, radar, psd as rs_psd\n",
+        "from rustmatrix.tmatrix_aux import (dsr_thurai_2007, geom_horiz_back,\n",
+        "                                      geom_horiz_forw, K_w_sqr, wl_C)\n",
+        "from rustmatrix.refractive import m_w_10C\n",
+    ),
+    md("## Tabulate once, evaluate many\n"),
+    code(
+        "s = Scatterer(wavelength=wl_C, m=m_w_10C[wl_C],\n",
+        "              Kw_sqr=K_w_sqr[wl_C], ddelt=1e-4, ndgs=2)\n",
+        "integ = rs_psd.PSDIntegrator()\n",
+        "integ.D_max = 8.0\n",
+        "integ.num_points = 64\n",
+        "integ.axis_ratio_func = lambda D: 1.0 / dsr_thurai_2007(D)\n",
+        "integ.geometries = (geom_horiz_back, geom_horiz_forw)\n",
+        "s.psd_integrator = integ\n",
+        "s.psd_integrator.init_scatter_table(s)\n",
+    ),
+    md("## Sweep median diameter D0\n"),
+    code(
+        "D0s = np.linspace(0.5, 3.0, 12)\n",
+        "Zh = np.empty_like(D0s)\n",
+        "Zdr = np.empty_like(D0s)\n",
+        "Kdp = np.empty_like(D0s)\n",
+        "Ai = np.empty_like(D0s)\n",
+        "\n",
+        "for i, D0 in enumerate(D0s):\n",
+        "    s.psd = rs_psd.GammaPSD(D0=D0, Nw=8e3, mu=4)\n",
+        "    s.set_geometry(geom_horiz_back)\n",
+        "    Zh[i] = 10 * np.log10(radar.refl(s))\n",
+        "    Zdr[i] = 10 * np.log10(radar.Zdr(s))\n",
+        "    s.set_geometry(geom_horiz_forw)\n",
+        "    Kdp[i] = radar.Kdp(s)\n",
+        "    Ai[i] = radar.Ai(s)\n",
+        "\n",
+        "fig, axes = plt.subplots(2, 2, figsize=(9, 6), sharex=True)\n",
+        "axes[0, 0].plot(D0s, Zh, 'C0-o'); axes[0, 0].set_ylabel('Z_h [dBZ]')\n",
+        "axes[0, 1].plot(D0s, Zdr, 'C1-o'); axes[0, 1].set_ylabel('Z_dr [dB]')\n",
+        "axes[1, 0].plot(D0s, Kdp, 'C2-o'); axes[1, 0].set_ylabel('K_dp [°/km]')\n",
+        "axes[1, 1].plot(D0s, Ai, 'C3-o'); axes[1, 1].set_ylabel('A_i [dB/km]')\n",
+        "for ax in axes.flat:\n",
+        "    ax.set_xlabel('D0 [mm]')\n",
+        "    ax.grid(True, alpha=0.3)\n",
+        "fig.suptitle('C-band gamma-PSD rain observables (Nw=8e3, mu=4)')\n",
+        "fig.tight_layout();\n",
+    ),
+]
+
+
+NB04 = [
+    md(
+        "# Tutorial 04 — Oriented ice crystals at W-band\n",
+        "\n",
+        "Ice crystals fall with a preferred orientation and a spread of\n",
+        "canting angles around it. The orientation PDF captures the spread\n",
+        "and feeds directly into the dual-pol observables. This notebook\n",
+        "compares the three orientation-averaging strategies rustmatrix\n",
+        "ships with: none, fixed-quadrature, and adaptive.\n",
+    ),
+    code(
+        "import time\n",
+        "import numpy as np\n",
+        "import matplotlib.pyplot as plt\n",
+        "\n",
+        "from rustmatrix import Scatterer, orientation as rs_orient, radar\n",
+        "from rustmatrix.tmatrix_aux import geom_horiz_back, wl_W\n",
+        "from rustmatrix.refractive import mi\n",
+    ),
+    md("## One crystal, three averaging schemes\n"),
+    code(
+        "D_eq_mm = 0.5\n",
+        "ice_m = mi(wl_W, 0.9)\n",
+        "pdf = rs_orient.gaussian_pdf(std=20.0, mean=90.0)\n",
+        "base = dict(radius=D_eq_mm/2, wavelength=wl_W, m=ice_m,\n",
+        "            axis_ratio=0.5, ddelt=1e-4, ndgs=2)\n",
+        "\n",
+        "schemes = [\n",
+        "    ('single', rs_orient.orient_single, {'or_pdf': pdf}),\n",
+        "    ('fixed 6×12', rs_orient.orient_averaged_fixed,\n",
+        "     {'or_pdf': pdf, 'n_alpha': 6, 'n_beta': 12}),\n",
+        "    ('adaptive', rs_orient.orient_averaged_adaptive, {'or_pdf': pdf}),\n",
+        "]\n",
+        "rows = []\n",
+        "for name, orient, extra in schemes:\n",
+        "    s = Scatterer(**base, **extra)\n",
+        "    s.orient = orient\n",
+        "    s.set_geometry(geom_horiz_back)\n",
+        "    t0 = time.perf_counter()\n",
+        "    zdr = radar.Zdr(s)\n",
+        "    elapsed = time.perf_counter() - t0\n",
+        "    rows.append((name, 10*np.log10(zdr), elapsed))\n",
+        "    print(f'{name:<12} Z_dr = {10*np.log10(zdr):+.4f} dB   ({elapsed*1000:.1f} ms)')\n",
+    ),
+    md("## Canting-angle spread sensitivity\n",
+       "\n",
+       "Sweep the Gaussian PDF's `std` parameter to see how rapidly Z_dr\n",
+       "collapses as the orientation spread widens.\n"),
+    code(
+        "stds = np.array([1, 5, 10, 15, 20, 30, 45, 60])\n",
+        "zdrs = np.empty_like(stds, dtype=float)\n",
+        "for i, sd in enumerate(stds):\n",
+        "    s = Scatterer(**base)\n",
+        "    s.orient = rs_orient.orient_averaged_fixed\n",
+        "    s.or_pdf = rs_orient.gaussian_pdf(std=float(sd), mean=90.0)\n",
+        "    s.n_alpha, s.n_beta = 6, 12\n",
+        "    s.set_geometry(geom_horiz_back)\n",
+        "    zdrs[i] = 10 * np.log10(radar.Zdr(s))\n",
+        "\n",
+        "fig, ax = plt.subplots(figsize=(7, 4))\n",
+        "ax.plot(stds, zdrs, 'C0-o')\n",
+        "ax.set_xlabel('canting-angle σ [deg]')\n",
+        "ax.set_ylabel('Z_dr [dB]')\n",
+        "ax.set_title('W-band prolate ice column, oriented')\n",
+        "ax.grid(True, alpha=0.3)\n",
+        "fig.tight_layout();\n",
+    ),
+]
+
+
+NB05 = [
+    md(
+        "# Tutorial 05 — One PSD, six radar bands\n",
+        "\n",
+        "Retrieval algorithms that use more than one frequency need a\n",
+        "forward model that works across the whole instrument suite. This\n",
+        "notebook runs the same moderate-convective gamma PSD through\n",
+        "rustmatrix at S, C, X, Ku, Ka, and W band and plots the frequency\n",
+        "response of the dual-pol observables.\n",
+    ),
+    code(
+        "import numpy as np\n",
+        "import matplotlib.pyplot as plt\n",
+        "\n",
+        "from rustmatrix import Scatterer, radar, psd as rs_psd\n",
+        "from rustmatrix.tmatrix_aux import (dsr_thurai_2007, geom_horiz_back,\n",
+        "                                      geom_horiz_forw, K_w_sqr,\n",
+        "                                      wl_S, wl_C, wl_X, wl_Ku,\n",
+        "                                      wl_Ka, wl_W)\n",
+        "from rustmatrix.refractive import m_w_20C\n",
+        "\n",
+        "BANDS = [('S', wl_S), ('C', wl_C), ('X', wl_X),\n",
+        "         ('Ku', wl_Ku), ('Ka', wl_Ka), ('W', wl_W)]\n",
+    ),
+    md("## Run the six bands\n"),
+    code(
+        "def run(wl):\n",
+        "    s = Scatterer(wavelength=wl, m=m_w_20C[wl],\n",
+        "                  Kw_sqr=K_w_sqr[wl], ddelt=1e-4, ndgs=2)\n",
+        "    integ = rs_psd.PSDIntegrator()\n",
+        "    integ.D_max = 8.0\n",
+        "    integ.num_points = 64\n",
+        "    integ.axis_ratio_func = lambda D: 1.0 / dsr_thurai_2007(D)\n",
+        "    integ.geometries = (geom_horiz_back, geom_horiz_forw)\n",
+        "    s.psd_integrator = integ\n",
+        "    s.psd_integrator.init_scatter_table(s)\n",
+        "    s.psd = rs_psd.GammaPSD(D0=1.5, Nw=8e3, mu=4)\n",
+        "    s.set_geometry(geom_horiz_back)\n",
+        "    Zh = 10 * np.log10(radar.refl(s))\n",
+        "    Zdr = 10 * np.log10(radar.Zdr(s))\n",
+        "    s.set_geometry(geom_horiz_forw)\n",
+        "    return Zh, Zdr, radar.Kdp(s), radar.Ai(s)\n",
+        "\n",
+        "Zh = {}; Zdr = {}; Kdp = {}; Ai = {}\n",
+        "for name, wl in BANDS:\n",
+        "    Zh[name], Zdr[name], Kdp[name], Ai[name] = run(wl)\n",
+        "    print(f'{name:<3} Z_h={Zh[name]:6.2f}  Z_dr={Zdr[name]:+.3f}  '\n",
+        "          f'K_dp={Kdp[name]:+.3f}  A_i={Ai[name]:.4f}')\n",
+    ),
+    md("## Plot the frequency response\n"),
+    code(
+        "names = [b[0] for b in BANDS]\n",
+        "wls = np.array([b[1] for b in BANDS])\n",
+        "fig, axes = plt.subplots(2, 2, figsize=(9, 6))\n",
+        "axes[0, 0].semilogx(wls, [Zh[n] for n in names], 'o-'); axes[0, 0].set_ylabel('Z_h [dBZ]')\n",
+        "axes[0, 1].semilogx(wls, [Zdr[n] for n in names], 'o-'); axes[0, 1].set_ylabel('Z_dr [dB]')\n",
+        "axes[1, 0].semilogx(wls, [Kdp[n] for n in names], 'o-'); axes[1, 0].set_ylabel('K_dp [°/km]')\n",
+        "axes[1, 1].semilogx(wls, [Ai[n] for n in names], 'o-'); axes[1, 1].set_ylabel('A_i [dB/km]')\n",
+        "for ax, label in zip(axes.flat, names*4):\n",
+        "    ax.set_xlabel('wavelength [mm]')\n",
+        "    ax.grid(True, alpha=0.3, which='both')\n",
+        "    for name, wl in BANDS:\n",
+        "        ax.axvline(wl, color='k', alpha=0.1)\n",
+        "fig.suptitle('Moderate convective rain (D0=1.5 mm): frequency response')\n",
+        "fig.tight_layout();\n",
+    ),
+]
+
+
+def main() -> None:
+    here = Path(__file__).parent
+    for name, cells in (("01_sphere_mie.ipynb", NB01),
+                        ("02_raindrop_zdr.ipynb", NB02),
+                        ("03_psd_gamma_rain.ipynb", NB03),
+                        ("04_oriented_ice.ipynb", NB04),
+                        ("05_radar_band_sweep.ipynb", NB05)):
+        path = here / name
+        with open(path, "w") as f:
+            json.dump(notebook(cells), f, indent=1)
+        print(f"wrote {path}")
+
+
+if __name__ == "__main__":
+    main()

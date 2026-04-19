@@ -9,8 +9,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from rupytmatrix import Scatterer, radar
-from rupytmatrix.tmatrix_aux import geom_horiz_back, geom_horiz_forw
+from rustmatrix import Scatterer, radar
+from rustmatrix.tmatrix_aux import geom_horiz_back, geom_horiz_forw
 
 
 @pytest.fixture

@@ -1,7 +1,7 @@
 """Gaussian quadrature points/weights for arbitrary weighting functions.
 
 Direct port of ``pytmatrix.quadrature.quadrature`` — used by
-:func:`rupytmatrix.orientation.orient_averaged_fixed` to build an
+:func:`rustmatrix.orientation.orient_averaged_fixed` to build an
 integration rule for the orientation PDF in beta.
 
 Pure Python on top of numpy/scipy; no Rust involvement.
@@ -15,9 +15,25 @@ import numpy as np
 def discrete_gautschi(z: np.ndarray, w: np.ndarray, n_iter: int):
     """Discrete Gautschi / Stieltjes procedure.
 
-    Builds the three-term recurrence coefficients (a, b) for the
+    Builds three-term recurrence coefficients ``(a, b)`` for the
     orthogonal polynomials with respect to the discrete inner product
     defined by abscissas ``z`` and weights ``w``.
+
+    Parameters
+    ----------
+    z : ndarray, shape (n,)
+        Abscissas sampling the underlying interval.
+    w : ndarray, shape (n,)
+        Weights at each abscissa (including the integration differential).
+    n_iter : int
+        Number of recurrence levels to compute.
+
+    Returns
+    -------
+    a : ndarray, shape (n_iter,)
+        Diagonal coefficients.
+    b : ndarray, shape (n_iter - 1,)
+        Subdiagonal coefficients.
     """
     p = np.ones(z.shape)
     p /= np.sqrt(np.dot(p, p))
@@ -38,23 +54,34 @@ def discrete_gautschi(z: np.ndarray, w: np.ndarray, n_iter: int):
 
 
 def get_points_and_weights(w_func=None, left=-1.0, right=1.0, num_points=5, n=4096):
-    """Quadrature points and weights for a weighting function ``w(x)``.
+    r"""Quadrature points and weights for a custom weighting function.
 
-    Approximates :math:`\\int_{left}^{right} f(x) w(x) dx \\approx \\sum_i
-    w_i f(x_i)` by building the orthogonal-polynomial recurrence for
-    ``w`` from a dense midpoint sample, diagonalising the Jacobi matrix,
-    and reading off points and weights.
+    Approximates :math:`\int_{left}^{right} f(x)\,w(x)\,dx \approx
+    \sum_i w_i f(x_i)` by building the orthogonal-polynomial recurrence
+    for ``w`` from a dense midpoint sample, diagonalising the resulting
+    tridiagonal Jacobi matrix, and reading off the points and weights.
 
-    Args:
-        w_func: Weighting function; defaults to the constant 1 (Gauss-Legendre).
-        left, right: Integration interval.
-        num_points: Number of quadrature points to return.
-        n: Number of points used to sample ``w`` when building the
-            Jacobi matrix.
+    Parameters
+    ----------
+    w_func : callable, optional
+        Weighting function ``w(x)``. Defaults to the constant 1
+        (i.e. ordinary Gauss-Legendre on ``[left, right]``).
+    left, right : float
+        Integration interval.
+    num_points : int
+        Number of quadrature points to return.
+    n : int
+        Resolution of the midpoint sample used to approximate ``w``.
 
-    Returns:
-        ``(points, weights)`` — both 1-D numpy arrays of length
-        ``num_points``, sorted by point.
+    Returns
+    -------
+    points, weights : ndarray, shape (num_points,)
+        Quadrature nodes and their weights, sorted by node.
+
+    Notes
+    -----
+    Used by :func:`orientation.orient_averaged_fixed` to build a rule that
+    integrates over the orientation PDF in β.
     """
     if w_func is None:
         w_func = lambda x: np.ones(x.shape)  # noqa: E731

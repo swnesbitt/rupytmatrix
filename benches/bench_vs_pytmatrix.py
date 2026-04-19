@@ -1,4 +1,4 @@
-"""Speed comparison: rupytmatrix (Rust) vs pytmatrix (Fortran).
+"""Speed comparison: rustmatrix (Rust) vs pytmatrix (Fortran).
 
 Run in an env where both are importable:
     conda run -n rupy-parity python benches/bench_vs_pytmatrix.py
@@ -13,9 +13,9 @@ import pytmatrix.tmatrix as py_tm
 from pytmatrix import orientation as py_orient
 from pytmatrix import psd as py_psd
 
-import rupytmatrix
-from rupytmatrix import Scatterer, orientation as rs_orient, psd as rs_psd
-from rupytmatrix.tmatrix_aux import geom_horiz_back
+import rustmatrix
+from rustmatrix import Scatterer, orientation as rs_orient, psd as rs_psd
+from rustmatrix.tmatrix_aux import geom_horiz_back
 
 
 def _time(fn, repeats):
@@ -227,7 +227,7 @@ def bench_tmatrix_only():
         s._init_tmatrix()
 
     def rs_fn():
-        rupytmatrix.calctmat(radius, 1.0, wl, m.real, m.imag, 1.5, -1, 1e-4, 2)
+        rustmatrix.calctmat(radius, 1.0, wl, m.real, m.imag, 1.5, -1, 1e-4, 2)
 
     return _time(py_fn, 20), _time(rs_fn, 20)
 
@@ -252,7 +252,7 @@ def main():
          lambda: bench_psd_tabulate_orient_adaptive(4)),
     ]
 
-    print(f"{'case':<44} {'pytmatrix':>12} {'rupytmatrix':>14} {'speedup':>10}")
+    print(f"{'case':<44} {'pytmatrix':>12} {'rustmatrix':>14} {'speedup':>10}")
     print("-" * 82)
     for name, fn in cases:
         t_py, t_rs = fn()

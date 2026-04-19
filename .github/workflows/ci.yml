@@ -43,6 +43,6 @@ jobs:
         # so build a wheel and install it instead.
         run: |
           maturin build --release --out dist
-          pip install --no-index --find-links=dist rupytmatrix
+          pip install --no-index --find-links=dist rustmatrix
       - name: Run tests (without pytmatrix — parity tests skipped)
         run: pytest -v tests/

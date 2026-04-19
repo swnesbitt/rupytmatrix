@@ -1,8 +1,8 @@
 """Angular-integrated scattering quantities.
 
 Port of ``pytmatrix.scatter``. These helpers operate on a
-:class:`~rupytmatrix.scatterer.Scatterer` (not the Rust core directly)
-and are used by :class:`~rupytmatrix.psd.PSDIntegrator` to tabulate
+:class:`~rustmatrix.scatterer.Scatterer` (not the Rust core directly)
+and are used by :class:`~rustmatrix.psd.PSDIntegrator` to tabulate
 scattering / extinction cross-sections and asymmetry per diameter.
 """
 
@@ -16,13 +16,27 @@ _rad_to_deg = 180.0 / np.pi
 
 
 def sca_intensity(scatterer, h_pol: bool = True) -> float:
-    """Differential scattering cross-section (phase-function value)."""
+    """Differential scattering cross-section (value of the phase function).
+
+    Parameters
+    ----------
+    scatterer : Scatterer
+    h_pol : bool
+
+    Returns
+    -------
+    float
+        ``Z[0,0] ± Z[0,1]`` depending on polarisation.
+    """
     Z = scatterer.get_Z()
     return (Z[0, 0] - Z[0, 1]) if h_pol else (Z[0, 0] + Z[0, 1])
 
 
 def ldr(scatterer, h_pol: bool = True) -> float:
-    """Linear depolarisation ratio for the current geometry."""
+    """Linear depolarisation ratio (linear H/H or V/V ratio).
+
+    Convert to dB with ``10 * log10(ldr(...))``.
+    """
     Z = scatterer.get_Z()
     if h_pol:
         return (Z[0, 0] - Z[0, 1] + Z[1, 0] - Z[1, 1]) / (
@@ -34,7 +48,12 @@ def ldr(scatterer, h_pol: bool = True) -> float:
 
 
 def sca_xsect(scatterer, h_pol: bool = True) -> float:
-    """Polarised scattering cross-section (full-sphere integral of Z)."""
+    """Polarised scattering cross-section σ_sca [mm²].
+
+    Integrates ``sca_intensity · sin(θ)`` over the full scattering sphere
+    using :func:`scipy.integrate.dblquad`. When a ``psd_integrator`` is
+    attached, the pre-tabulated value is returned instead (much faster).
+    """
     if scatterer.psd_integrator is not None:
         return scatterer.psd_integrator.get_angular_integrated(
             scatterer.psd, scatterer.get_geometry(), "sca_xsect", h_pol=h_pol
@@ -56,7 +75,12 @@ def sca_xsect(scatterer, h_pol: bool = True) -> float:
 
 
 def ext_xsect(scatterer, h_pol: bool = True) -> float:
-    """Extinction cross-section via the optical theorem on the forward S-matrix."""
+    """Extinction cross-section σ_ext [mm²] from the optical theorem.
+
+    Temporarily rotates the scatterer into forward-scatter geometry,
+    evaluates ``S``, and returns ``2 λ Im(S_ii)``. Restores the original
+    geometry before returning.
+    """
     if scatterer.psd_integrator is not None:
         try:
             return scatterer.psd_integrator.get_angular_integrated(
@@ -82,13 +106,20 @@ def ext_xsect(scatterer, h_pol: bool = True) -> float:
 
 
 def ssa(scatterer, h_pol: bool = True) -> float:
-    """Single-scattering albedo."""
+    """Single-scattering albedo ω = σ_sca / σ_ext (dimensionless, 0–1).
+
+    Returns 0 when σ_ext is zero (e.g. perfectly non-attenuating medium).
+    """
     ext = ext_xsect(scatterer, h_pol=h_pol)
     return sca_xsect(scatterer, h_pol=h_pol) / ext if ext > 0.0 else 0.0
 
 
 def asym(scatterer, h_pol: bool = True) -> float:
-    """Asymmetry parameter <cos(Theta)>."""
+    """Asymmetry parameter g = ⟨cos Θ⟩ (dimensionless).
+
+    g = 0 for isotropic scattering, g → 1 for forward-peaked scattering,
+    g < 0 for backscattering-dominated regimes.
+    """
     if scatterer.psd_integrator is not None:
         return scatterer.psd_integrator.get_angular_integrated(
             scatterer.psd, scatterer.get_geometry(), "asym", h_pol=h_pol

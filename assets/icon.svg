@@ -1,30 +1,35 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="rupytmatrix — T-matrix scattering from a nonspherical particle, rendered with matrix brackets">
-  <title>rupytmatrix</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="rustmatrix — weather radar and satellite illuminating a raindrop carrying the Rust gear logo">
+  <title>rustmatrix</title>
   <defs>
-    <!-- Rust-orange → Python-blue diagonal, the two halves of the project. -->
-    <linearGradient id="rp" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%"  stop-color="#F0AD3D"/>
-      <stop offset="55%" stop-color="#D0421B"/>
-      <stop offset="100%" stop-color="#2C4C7C"/>
+    <!-- Sky background. -->
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#1a2442"/>
+      <stop offset="100%" stop-color="#0c1428"/>
     </linearGradient>
-    <!-- Particle fill: hot core fading to orange. -->
-    <radialGradient id="particle" cx="42%" cy="38%" r="70%">
-      <stop offset="0%"  stop-color="#FFD66B"/>
-      <stop offset="55%" stop-color="#E06A1F"/>
-      <stop offset="100%" stop-color="#8A2A0C"/>
+    <!-- Raindrop body. -->
+    <linearGradient id="drop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#8FD8FF"/>
+      <stop offset="55%"  stop-color="#4EA8DC"/>
+      <stop offset="100%" stop-color="#1E5A9A"/>
+    </linearGradient>
+    <!-- Parabolic-dish metallic shading. -->
+    <radialGradient id="dish" cx="45%" cy="65%" r="65%">
+      <stop offset="0%"   stop-color="#F0F4FA"/>
+      <stop offset="70%"  stop-color="#A6B3C8"/>
+      <stop offset="100%" stop-color="#5A6A85"/>
     </radialGradient>
-    <!-- Subtle inner glow around the particle. -->
-    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%"   stop-color="#F5B041" stop-opacity="0.45"/>
-      <stop offset="70%"  stop-color="#F5B041" stop-opacity="0.0"/>
-    </radialGradient>
+    <!-- Satellite body. -->
+    <linearGradient id="sat" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#EEF1F8"/>
+      <stop offset="100%" stop-color="#B0B9CC"/>
+    </linearGradient>
   </defs>
 
-  <!-- Rounded-square background, Python-navy. -->
-  <rect width="256" height="256" rx="44" ry="44" fill="#101828"/>
+  <!-- Rounded-square background. -->
+  <rect width="256" height="256" rx="44" ry="44" fill="url(#sky)"/>
 
-  <!-- Gauss-Legendre lattice: faint grid hinting at quadrature nodes. -->
-  <g stroke="#2C3E6B" stroke-width="1" opacity="0.35">
+  <!-- Gauss-Legendre lattice: faint grid, kept from the original. -->
+  <g stroke="#2C3E6B" stroke-width="1" opacity="0.22">
     <path d="M 48 80  H 208"/>
     <path d="M 48 128 H 208"/>
     <path d="M 48 176 H 208"/>
@@ -33,41 +38,122 @@
     <path d="M 176 48 V 208"/>
   </g>
 
-  <!-- Incoming plane wave from the left (Python blue). -->
-  <g stroke="#3776AB" stroke-width="3" stroke-linecap="round" opacity="0.9">
-    <path d="M 20 104 H 44"/>
-    <path d="M 20 128 H 44"/>
-    <path d="M 20 152 H 44"/>
+  <!-- ================= Satellite (top-right) ================= -->
+  <g stroke="#0A1020" stroke-linejoin="round" stroke-linecap="round">
+    <!-- Solar panels -->
+    <g stroke-width="2">
+      <rect x="158" y="52" width="28" height="14" fill="#2C4C7C"/>
+      <rect x="210" y="52" width="28" height="14" fill="#2C4C7C"/>
+      <g stroke="#0A1020" stroke-width="1">
+        <line x1="158" y1="57" x2="186" y2="57"/>
+        <line x1="158" y1="61" x2="186" y2="61"/>
+        <line x1="172" y1="52" x2="172" y2="66"/>
+        <line x1="210" y1="57" x2="238" y2="57"/>
+        <line x1="210" y1="61" x2="238" y2="61"/>
+        <line x1="224" y1="52" x2="224" y2="66"/>
+      </g>
+      <!-- Connecting struts -->
+      <line x1="186" y1="59" x2="192" y2="59" stroke-width="2"/>
+      <line x1="204" y1="59" x2="210" y2="59" stroke-width="2"/>
+    </g>
+    <!-- Body -->
+    <rect x="192" y="50" width="12" height="20" rx="2" fill="url(#sat)" stroke-width="2.5"/>
+    <!-- Communication dish -->
+    <path d="M 193 50 L 198 40 L 203 50 Z" fill="#E8EEF4" stroke-width="2"/>
+    <circle cx="198" cy="38" r="2.2" fill="#FFD66B" stroke-width="1.5"/>
   </g>
 
-  <!-- Outgoing scattered wavefronts: concentric oblate-spheroid isophases. -->
-  <g fill="none" stroke="url(#rp)" stroke-linecap="round">
-    <ellipse cx="128" cy="128" rx="58"  ry="36"  stroke-width="2.2" opacity="0.85"/>
-    <ellipse cx="128" cy="128" rx="78"  ry="48"  stroke-width="2"   opacity="0.55"/>
-    <ellipse cx="128" cy="128" rx="98"  ry="60"  stroke-width="1.6" opacity="0.30"/>
-  </g>
-
-  <!-- Soft glow behind the particle. -->
-  <circle cx="128" cy="128" r="60" fill="url(#glow)"/>
-
-  <!-- Central oblate spheroid — the T-matrix target. -->
+  <!-- Satellite scanning beam toward drop. -->
   <g>
-    <ellipse cx="128" cy="128" rx="38" ry="23" fill="url(#particle)"/>
-    <!-- Specular highlight. -->
-    <ellipse cx="118" cy="120" rx="14" ry="6" fill="#FFE8B5" opacity="0.55"/>
-    <!-- Rim to make the shape pop against the dark bg. -->
-    <ellipse cx="128" cy="128" rx="38" ry="23" fill="none" stroke="#FFD66B" stroke-width="1.2" opacity="0.85"/>
+    <!-- Wide cone, soft fill -->
+    <path d="M 196 68 L 138 112 L 154 102 Z" fill="#9FD8FF" opacity="0.18"/>
+    <!-- Center line, dashed -->
+    <line x1="196" y1="69" x2="145" y2="108"
+          stroke="#9FD8FF" stroke-width="2" stroke-linecap="round"
+          stroke-dasharray="3 4" opacity="0.85"/>
   </g>
 
-  <!-- Matrix brackets in the corners — the "T" of T-matrix. -->
+  <!-- ================= Weather radar (bottom-left) ================= -->
+  <g stroke="#0A1020" stroke-linejoin="round" stroke-linecap="round">
+    <!-- Base pad -->
+    <rect x="34" y="214" width="40" height="6" rx="2" fill="#4A5A75" stroke-width="2"/>
+    <!-- Tower -->
+    <rect x="48" y="176" width="12" height="38" fill="#6A7A95" stroke-width="2"/>
+    <line x1="48" y1="190" x2="60" y2="190" stroke-width="1.2"/>
+    <line x1="48" y1="202" x2="60" y2="202" stroke-width="1.2"/>
+    <!-- Dish (parabolic, tilted up-right toward the drop) -->
+    <g transform="translate(54 174) rotate(-35)">
+      <ellipse cx="0" cy="0" rx="22" ry="8" fill="url(#dish)" stroke-width="2.5"/>
+      <ellipse cx="0" cy="-1" rx="18" ry="5" fill="none" stroke="#0A1020" stroke-width="1" opacity="0.35"/>
+      <!-- Feed horn -->
+      <rect x="-2" y="-14" width="4" height="12" fill="#6A7A95" stroke-width="1.8"/>
+      <circle cx="0" cy="-15" r="2.2" fill="#FFD66B" stroke-width="1.5"/>
+    </g>
+  </g>
+
+  <!-- EM wavefronts from radar — concentric arcs centered on the dish. -->
+  <g fill="none" stroke="#F0AD3D" stroke-linecap="round" stroke-width="2.6">
+    <path d="M 75.5 179.5 A 25 25 0 0 0 64.5 151.3"  opacity="0.95"/>
+    <path d="M 89.6 174.4 A 40 40 0 0 0 72.0 129.2"  opacity="0.75"/>
+    <path d="M 103.7 169.3 A 55 55 0 0 0 79.5 107.2" opacity="0.55"/>
+  </g>
+
+  <!-- ================= Raindrop (centre) ================= -->
+  <g>
+    <!-- Soft glow behind the drop -->
+    <ellipse cx="128" cy="134" rx="46" ry="58" fill="#9FD8FF" opacity="0.12"/>
+    <!-- Cartoon teardrop: point at top, bulb at bottom. -->
+    <path d="M 128 70
+             C 88 112 88 174 128 192
+             C 168 174 168 112 128 70 Z"
+          fill="url(#drop)" stroke="#0B3B74" stroke-width="3.5"
+          stroke-linejoin="round"/>
+    <!-- Specular highlight -->
+    <path d="M 108 112 Q 102 130 108 150 Q 116 130 116 112 Z"
+          fill="#E3F4FF" opacity="0.55"/>
+    <!-- Tiny sparkle -->
+    <circle cx="112" cy="104" r="2.4" fill="#FFFFFF" opacity="0.9"/>
+
+    <!-- ========== Rust gear logo, shaded into the drop ========== -->
+    <g transform="translate(128 148)" opacity="0.48">
+      <g fill="#2A0A00" stroke="#2A0A00">
+        <!-- Gear teeth (8-tooth simplified Rust cog). -->
+        <g stroke-width="0">
+          <rect x="-3.5" y="-27" width="7" height="7" rx="1.2"/>
+          <g transform="rotate(45)"><rect x="-3.5" y="-27" width="7" height="7" rx="1.2"/></g>
+          <g transform="rotate(90)"><rect x="-3.5" y="-27" width="7" height="7" rx="1.2"/></g>
+          <g transform="rotate(135)"><rect x="-3.5" y="-27" width="7" height="7" rx="1.2"/></g>
+          <g transform="rotate(180)"><rect x="-3.5" y="-27" width="7" height="7" rx="1.2"/></g>
+          <g transform="rotate(225)"><rect x="-3.5" y="-27" width="7" height="7" rx="1.2"/></g>
+          <g transform="rotate(270)"><rect x="-3.5" y="-27" width="7" height="7" rx="1.2"/></g>
+          <g transform="rotate(315)"><rect x="-3.5" y="-27" width="7" height="7" rx="1.2"/></g>
+        </g>
+        <!-- Outer ring -->
+        <circle cx="0" cy="0" r="20" fill="none" stroke-width="3"/>
+        <!-- Inner ring -->
+        <circle cx="0" cy="0" r="14.5" fill="none" stroke-width="1.6"/>
+        <!-- Stylised letter "R" -->
+        <path d="M -6 -9 V 9
+                 M -6 -9 H 2 A 4.5 4.5 0 0 1 2 0 H -6
+                 M 1 0 L 6 9"
+              fill="none" stroke-width="3"
+              stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+    </g>
+  </g>
+
+  <!-- Scattered wavelets bouncing off the drop — the T-matrix output. -->
+  <g fill="none" stroke="#FFD66B" stroke-linecap="round" stroke-width="1.8" opacity="0.6">
+    <path d="M 178 100 Q 192 110 198 122"/>
+    <path d="M 184 140 Q 200 150 204 164"/>
+    <path d="M 72 100 Q 60 90 52 82"/>
+  </g>
+
+  <!-- Matrix brackets in the corners — keeps the T-matrix identity. -->
   <g fill="none" stroke="#E6EEF8" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
-    <!-- top-left -->
     <path d="M 54 36 H 34 V 70"/>
-    <!-- top-right -->
     <path d="M 202 36 H 222 V 70"/>
-    <!-- bottom-left -->
     <path d="M 54 220 H 34 V 186"/>
-    <!-- bottom-right -->
     <path d="M 202 220 H 222 V 186"/>
   </g>
 </svg>

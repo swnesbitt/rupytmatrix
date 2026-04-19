@@ -5,8 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from rupytmatrix import refractive
-from rupytmatrix.tmatrix_aux import wl_C, wl_S, wl_X
+from rustmatrix import refractive
+from rustmatrix.tmatrix_aux import wl_C, wl_S, wl_X
 
 
 # ---------- effective-medium approximations ----------

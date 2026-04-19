@@ -24,20 +24,32 @@ from .tmatrix_aux import wl_C, wl_Ka, wl_Ku, wl_S, wl_W, wl_X
 
 
 def mg_refractive(m, mix):
-    """Maxwell-Garnett EMA for the refractive index.
+    """Maxwell-Garnett effective-medium refractive index.
 
-    Args:
-        m: Tuple of the complex refractive indices of the media.
-        mix: Tuple of the volume fractions of the media, ``len(mix) == len(m)``
-            (if ``sum(mix) != 1``, these are taken relative to ``sum(mix)``).
+    Parameters
+    ----------
+    m : tuple of complex
+        Complex refractive indices of the constituent media.
+    mix : tuple of float
+        Volume fractions, ``len(mix) == len(m)``. Renormalised to
+        ``sum(mix) == 1`` if needed.
 
-    Returns:
-        The Maxwell-Garnett approximation for the complex refractive index of
-        the effective medium.
+    Returns
+    -------
+    complex
+        Effective complex refractive index of the mixture.
 
-    If ``len(m) == 2`` the first element is the matrix and the second the
-    inclusion. If ``len(m) > 2`` the media are mixed recursively, from the
-    tail inward.
+    Notes
+    -----
+    For two components, the first element is the matrix and the second is
+    the inclusion — the approximation is asymmetric. For more components
+    the media are mixed recursively from the tail inward.
+
+    Examples
+    --------
+    Dry snow as ice inclusions in air (10 %% ice by volume):
+
+    >>> mg_refractive((complex(1.0, 0.0), complex(1.78, 3e-4)), (0.9, 0.1))
     """
     if len(m) == 2:
         cF = float(mix[1]) / (mix[0] + mix[1]) * \
@@ -51,9 +63,10 @@ def mg_refractive(m, mix):
 
 
 def bruggeman_refractive(m, mix):
-    """Bruggeman EMA for the refractive index (two components only).
+    """Bruggeman effective-medium refractive index (two components only).
 
-    See :func:`mg_refractive` for argument conventions.
+    Symmetric counterpart to :func:`mg_refractive`. Takes the same
+    arguments but both media are treated equally.
     """
     f1 = mix[0] / sum(mix)
     f2 = mix[1] / sum(mix)
@@ -101,17 +114,33 @@ ice_density = 0.9167
 
 
 def ice_refractive(file):
-    """Build an interpolator for the refractive index of ice/snow.
+    """Build a callable interpolator for ice/snow refractive index.
 
-    Args:
-        file: Path to a refractive-index lookup table (wavelength [μm],
-            real part, imaginary part). The bundled ``ice_refr.dat`` comes
-            from http://www.atmos.washington.edu/ice_optical_constants/ .
+    Parameters
+    ----------
+    file : str
+        Path to a refractive-index lookup table with columns
+        ``(wavelength [μm], real, imag)``. The bundled ``ice_refr.dat``
+        file comes from the Warren & Brandt (2008) optical-constants
+        compilation hosted at
+        http://www.atmos.washington.edu/ice_optical_constants/ .
 
-    Returns:
-        A callable ``ref(wl, snow_density)`` where ``wl`` is the wavelength
-        in mm and ``snow_density`` is in g/cm³. Handles scalar or
-        array-like ``wl``.
+    Returns
+    -------
+    ref : callable
+        ``ref(wl, snow_density)`` where ``wl`` is in mm and
+        ``snow_density`` is in g/cm³. Internally applies Maxwell-Garnett
+        to mix the ice refractive index with air at the given density.
+        Handles scalar or array-like ``wl``.
+
+    Notes
+    -----
+    The module-level :data:`mi` instance is a pre-built interpolator using
+    the bundled data file — use that directly in most cases:
+
+    >>> from rustmatrix.refractive import mi
+    >>> from rustmatrix.tmatrix_aux import wl_W
+    >>> mi(wl_W, 0.9)   # ice at 0.9 g/cm³ at W-band
     """
     D = np.loadtxt(file)
 

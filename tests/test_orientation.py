@@ -10,8 +10,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from rupytmatrix import Scatterer, orientation
-from rupytmatrix.quadrature import get_points_and_weights
+from rustmatrix import Scatterer, orientation
+from rustmatrix.quadrature import get_points_and_weights
 
 
 @pytest.fixture

@@ -1,7 +1,7 @@
 """Orientation-averaging strategies and PDFs.
 
 Port of ``pytmatrix.orientation``. The three ``orient_*`` functions all
-take a :class:`~rupytmatrix.scatterer.Scatterer` instance and return the
+take a :class:`~rustmatrix.scatterer.Scatterer` instance and return the
 ``(S, Z)`` pair averaged (or not) over the Euler angles ``(alpha, beta)``
 according to the scatterer's ``or_pdf``.
 
@@ -19,11 +19,27 @@ from scipy.integrate import dblquad, quad
 
 
 def gaussian_pdf(std: float = 10.0, mean: float = 0.0) -> Callable[[float], float]:
-    """Gaussian orientation PDF, spherically-normalised.
+    """Gaussian orientation PDF with the spherical Jacobian baked in.
 
-    Returns a callable ``pdf(x)`` that evaluates a Gaussian in ``beta``
-    (degrees) multiplied by the spherical Jacobian ``sin(beta)``, and
-    normalised to integrate to 1 over ``[0, 180]``.
+    Parameters
+    ----------
+    std : float
+        Standard deviation of the Gaussian in degrees. Default 10°.
+    mean : float
+        Mean canting angle β in degrees. Default 0° (vertical symmetry
+        axis). For horizontally-oriented falling particles use 90°.
+
+    Returns
+    -------
+    pdf : callable
+        ``pdf(beta)`` with ``beta`` in degrees. Includes the ``sin(β)``
+        spherical weight and is normalised to integrate to 1 on ``[0, 180]``.
+
+    Examples
+    --------
+    >>> pdf = gaussian_pdf(std=20.0, mean=90.0)
+    >>> pdf(90.0) > pdf(60.0)
+    True
     """
     norm_const = [1.0]
 
@@ -40,10 +56,14 @@ def gaussian_pdf(std: float = 10.0, mean: float = 0.0) -> Callable[[float], floa
 
 
 def uniform_pdf() -> Callable[[float], float]:
-    """Uniform orientation PDF on the unit sphere.
+    """Uniform-on-the-sphere orientation PDF.
 
-    Returns ``pdf(beta)`` proportional to ``sin(beta)`` and normalised on
-    ``[0, 180]``.
+    Returns
+    -------
+    pdf : callable
+        ``pdf(beta)`` equal to ``sin(β·π/180) / 2``, so that ∫pdf dβ on
+        ``[0, 180]`` equals 1. Use this when the particle has no preferred
+        orientation.
     """
     norm_const = [1.0]
 
@@ -56,17 +76,44 @@ def uniform_pdf() -> Callable[[float], float]:
 
 
 def orient_single(tm) -> Tuple[np.ndarray, np.ndarray]:
-    """No averaging — evaluate at the scatterer's ``(alpha, beta)``."""
+    """No averaging — evaluate S, Z at the scatterer's current (α, β).
+
+    Parameters
+    ----------
+    tm : Scatterer
+
+    Returns
+    -------
+    S : ndarray (2, 2) complex
+    Z : ndarray (4, 4) float
+    """
     return tm.get_SZ_single()
 
 
 def orient_averaged_adaptive(tm) -> Tuple[np.ndarray, np.ndarray]:
-    """Adaptive (scipy.integrate.dblquad) orientation averaging.
+    """Adaptive orientation averaging via ``scipy.integrate.dblquad``.
 
-    Slow; use ``orient_averaged_fixed`` for production runs. Integrates
-    each of the 4 (real, imag) components of ``S`` and all 16 components
-    of ``Z`` separately over ``alpha in [0, 360], beta in [0, 180]``,
-    weighted by ``tm.or_pdf(beta)``.
+    Integrates each of the 4 (re, im) components of ``S`` and the 16
+    components of ``Z`` separately over ``α ∈ [0, 360], β ∈ [0, 180]``,
+    weighted by ``tm.or_pdf(β)`` and divided by 360 for the uniform α.
+
+    Parameters
+    ----------
+    tm : Scatterer
+        Must have ``tm.or_pdf`` set.
+
+    Returns
+    -------
+    S : ndarray (2, 2) complex
+    Z : ndarray (4, 4) float
+
+    Notes
+    -----
+    Slow: many T-matrix evaluations per diameter. Prefer
+    :func:`orient_averaged_fixed` in production; reserve this for
+    reference runs. The Rust PSD fast path replaces this per-diameter
+    with a dense fixed grid and runs ~400× faster overall — see
+    :meth:`PSDIntegrator.init_scatter_table`.
     """
     S = np.zeros((2, 2), dtype=complex)
     Z = np.zeros((4, 4))
@@ -101,11 +148,25 @@ def orient_averaged_adaptive(tm) -> Tuple[np.ndarray, np.ndarray]:
 def orient_averaged_fixed(tm) -> Tuple[np.ndarray, np.ndarray]:
     """Fixed-quadrature orientation averaging.
 
-    Alpha is integrated by uniform sampling (``tm.n_alpha`` points); beta
-    is integrated by Gaussian quadrature built against ``tm.or_pdf``
-    using ``tm.beta_p`` and ``tm.beta_w`` (populated by
-    :meth:`Scatterer._init_orient`). Much faster than the adaptive
-    variant and accurate enough for practical use.
+    α is sampled uniformly at ``tm.n_alpha`` points on ``[0, 360)``; β is
+    integrated by Gauss-Gautschi quadrature against ``tm.or_pdf`` with
+    nodes ``tm.beta_p`` and weights ``tm.beta_w`` (populated by
+    :meth:`Scatterer._init_orient`).
+
+    Parameters
+    ----------
+    tm : Scatterer
+
+    Returns
+    -------
+    S : ndarray (2, 2) complex
+    Z : ndarray (4, 4) float
+
+    Notes
+    -----
+    Much faster than :func:`orient_averaged_adaptive` and accurate to a
+    few hundredths of a dB in Z_dr for smooth Gaussian PDFs. Default
+    choice for orientation-averaged radar forward modelling.
     """
     S = np.zeros((2, 2), dtype=complex)
     Z = np.zeros((4, 4))

@@ -9,7 +9,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from rupytmatrix import Scatterer
+from rustmatrix import Scatterer
 
 
 def test_scatterer_defaults():

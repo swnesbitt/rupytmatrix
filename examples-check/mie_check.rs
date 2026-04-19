@@ -1,4 +1,4 @@
-use rupytmatrix::mie;
+use rustmatrix::mie;
 use num_complex::Complex64;
 
 fn main() {

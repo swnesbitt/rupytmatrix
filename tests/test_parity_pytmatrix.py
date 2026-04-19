@@ -17,7 +17,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from rupytmatrix import Scatterer as RsScatterer
+from rustmatrix import Scatterer as RsScatterer
 
 pytestmark = pytest.mark.parity
 
@@ -94,7 +94,7 @@ def test_psd_integration_parity(PyScatterer):
     """
     from pytmatrix import psd as py_psd
 
-    from rupytmatrix import psd as rs_psd
+    from rustmatrix import psd as rs_psd
 
     geom = (90.0, 90.0, 0.0, 180.0, 0.0, 0.0)
     m = complex(1.5, 0.5)
@@ -127,8 +127,8 @@ def test_radar_observables_backscatter_parity(PyScatterer):
     """
     from pytmatrix import radar as py_radar
 
-    from rupytmatrix import radar as rs_radar
-    from rupytmatrix.tmatrix_aux import dsr_thurai_2007, geom_horiz_back, wl_X
+    from rustmatrix import radar as rs_radar
+    from rustmatrix.tmatrix_aux import dsr_thurai_2007, geom_horiz_back, wl_X
 
     m = complex(7.94, 2.33)
     D_eq = 2.0  # mm
@@ -168,8 +168,8 @@ def test_radar_observables_forward_parity(PyScatterer):
     """Kdp and Ai (forward geometry) must match pytmatrix."""
     from pytmatrix import radar as py_radar
 
-    from rupytmatrix import radar as rs_radar
-    from rupytmatrix.tmatrix_aux import dsr_thurai_2007, geom_horiz_forw, wl_X
+    from rustmatrix import radar as rs_radar
+    from rustmatrix.tmatrix_aux import dsr_thurai_2007, geom_horiz_forw, wl_X
 
     m = complex(7.94, 2.33)
     D_eq = 2.0
@@ -196,7 +196,7 @@ def test_refractive_mg_bruggeman_parity():
     """Maxwell-Garnett and Bruggeman EMAs are numeric ports — should match bit-for-bit."""
     py_refr = pytest.importorskip("pytmatrix.refractive")
 
-    from rupytmatrix import refractive as rs_refr
+    from rustmatrix import refractive as rs_refr
 
     m_ice = complex(1.78, 2e-3)
     m_air = complex(1.0, 0.0)
@@ -227,7 +227,7 @@ def test_orient_averaged_fixed_parity(PyScatterer):
     """Fixed-quadrature orientation averaging should match pytmatrix's."""
     from pytmatrix import orientation as py_orient
 
-    from rupytmatrix import orientation as rs_orient
+    from rustmatrix import orientation as rs_orient
 
     geom = (90.0, 90.0, 0.0, 180.0, 0.0, 0.0)
     m = complex(1.5, 0.01)
@@ -262,7 +262,7 @@ def test_psd_integration_orient_averaged_parity(PyScatterer):
     """
     from pytmatrix import orientation as py_orient, psd as py_psd
 
-    from rupytmatrix import orientation as rs_orient, psd as rs_psd
+    from rustmatrix import orientation as rs_orient, psd as rs_psd
 
     geom = (90.0, 90.0, 0.0, 180.0, 0.0, 0.0)
     m = complex(1.5, 0.01)
@@ -306,7 +306,7 @@ def test_psd_integration_angular_parity(PyScatterer):
     """
     from pytmatrix import psd as py_psd
 
-    from rupytmatrix import psd as rs_psd
+    from rustmatrix import psd as rs_psd
 
     geom = (90.0, 90.0, 0.0, 180.0, 0.0, 0.0)
     m = complex(1.5, 0.01)
@@ -347,7 +347,7 @@ def test_psd_integration_orient_adaptive_parity(PyScatterer):
     """
     from pytmatrix import orientation as py_orient, psd as py_psd
 
-    from rupytmatrix import orientation as rs_orient, psd as rs_psd
+    from rustmatrix import orientation as rs_orient, psd as rs_psd
 
     geom = (90.0, 90.0, 0.0, 180.0, 0.0, 0.0)
     m = complex(1.5, 0.01)

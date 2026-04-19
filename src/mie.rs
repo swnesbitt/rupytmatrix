@@ -2,7 +2,7 @@
 //!
 //! The axis_ratio = 1 limit of the T-matrix reduces to classical Mie theory.
 //! This module provides an independent implementation so parity tests can
-//! compare `rupytmatrix` against a reference that does not share the same
+//! compare `rustmatrix` against a reference that does not share the same
 //! code path as the general T-matrix solver.
 //!
 //! The algorithm follows the standard Bohren–Huffman formulation:

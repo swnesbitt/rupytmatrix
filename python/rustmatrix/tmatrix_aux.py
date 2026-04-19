@@ -41,7 +41,26 @@ geom_vert_forw = (180.0, 180.0, 0.0, 0.0, 0.0, 0.0)
 
 
 def dsr_thurai_2007(D_eq: float) -> float:
-    """Thurai et al. (2007) drop shape. `D_eq` in mm."""
+    """Thurai et al. (2007) equilibrium raindrop axis ratio (v/h).
+
+    Parameters
+    ----------
+    D_eq : float
+        Equivalent (volume) diameter in mm.
+
+    Returns
+    -------
+    float
+        Vertical / horizontal axis ratio (≤ 1 for flattened drops).
+        Scatterer expects horizontal / vertical, so pass
+        ``1.0 / dsr_thurai_2007(D)`` as ``axis_ratio``.
+
+    References
+    ----------
+    Thurai, M. et al. (2007). Drop shapes, model comparisons, and
+    calculations of polarimetric radar parameters in rain. *J. Atmos.
+    Oceanic Technol.*, 24, 1019–1032.
+    """
     if D_eq < 0.7:
         return 1.0
     if D_eq < 1.5:
@@ -56,12 +75,36 @@ def dsr_thurai_2007(D_eq: float) -> float:
 
 
 def dsr_pb(D_eq: float) -> float:
-    """Pruppacher and Beard drop shape. `D_eq` in mm."""
+    """Pruppacher & Beard linear drop-shape relation (v/h).
+
+    Parameters
+    ----------
+    D_eq : float
+        Equivalent diameter in mm.
+
+    Returns
+    -------
+    float
+        ``1.03 - 0.062 D``. Use ``1 / dsr_pb(D)`` as ``Scatterer.axis_ratio``.
+    """
     return 1.03 - 0.062 * D_eq
 
 
 def dsr_bc(D_eq: float) -> float:
-    """Beard and Chuang drop shape. `D_eq` in mm."""
+    """Beard & Chuang drop-shape relation (v/h).
+
+    Parameters
+    ----------
+    D_eq : float
+        Equivalent diameter in mm.
+
+    Returns
+    -------
+    float
+        Fourth-order polynomial fit to the Beard & Chuang (1987)
+        equilibrium shapes. Use ``1 / dsr_bc(D)`` as
+        ``Scatterer.axis_ratio``.
+    """
     return (
         1.0048 + 5.7e-04 * D_eq - 2.628e-02 * D_eq ** 2
         + 3.682e-03 * D_eq ** 3 - 1.677e-04 * D_eq ** 4

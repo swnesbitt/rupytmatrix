@@ -1,35 +1,66 @@
 <p align="center">
-  <img src="assets/icon.svg" alt="rupytmatrix icon" width="160" height="160">
+  <img src="assets/icon.svg" alt="rustmatrix icon" width="160" height="160">
 </p>
 
-# rupytmatrix
+# rustmatrix
 
-**Rust-backed T-matrix scattering for nonspherical particles.**
+**Rust-backed T-matrix scattering for nonspherical particles** — a drop-in
+replacement for the numerical core of
+[pytmatrix](https://github.com/jleinonen/pytmatrix), with the Fortran replaced
+by pure Rust behind a PyO3 extension module. Targets **Python 3.9–3.13** via
+ABI3 wheels.
 
-A port of the numerical core of [pytmatrix](https://github.com/jleinonen/pytmatrix) —
-itself a Python wrapper around M. I. Mishchenko's Fortran T-matrix code —
-with the Fortran replaced by pure Rust behind a PyO3 extension module.
-Targets **Python 3.9–3.13** via ABI3.
+If you have existing code that uses `pytmatrix.tmatrix.Scatterer`,
+`pytmatrix.psd`, `pytmatrix.orientation`, `pytmatrix.radar`,
+`pytmatrix.refractive`, or `pytmatrix.tmatrix_aux`, you should be able to
+change the imports and keep going. The APIs are identical.
 
-> **Status: alpha.** The core T-matrix solver is numerically verified against
-> the original pytmatrix (Fortran backend) for spheres, prolate/oblate
-> spheroids, and finite cylinders. All 7 parity tests pass. See [Status](#status)
-> below for specifics.
+> **Status: alpha.** The core solver is numerically verified against the
+> reference Fortran pytmatrix across spheres, spheroids, and finite cylinders
+> at tolerances ≤ 5×10⁻³ (see [Status](#status)). Parallelised PSD paths
+> run 4–400× faster on the same hardware.
 
-## Why?
+---
 
-* Replace a Fortran dependency with a pure Rust dependency that cross-compiles
-  cleanly to every platform Python 3.13 cares about (including Apple Silicon
-  and Windows, where the original pytmatrix has historically been awkward).
-* Avoid the `numpy.f2py` / `distutils` build path, which broke in Python 3.12+.
-* Modern build tooling (maturin + PyO3 0.22, abi3 wheels).
+## Background: the T-matrix method in 60 seconds
+
+Radar meteorology depends on knowing how raindrops, ice crystals, and
+hydrometeors scatter microwaves at radar wavelengths. The scattering is
+captured by two matrices:
+
+* the **amplitude matrix** *S* (2×2, complex) — relates the incident and
+  scattered electric-field components.
+* the **phase matrix** *Z* (4×4, real) — relates incident and scattered
+  Stokes parameters and feeds straight into polarimetric radar observables
+  (*Z*, *Z*<sub>dr</sub>, *K*<sub>dp</sub>, …).
+
+For a sphere, classical Mie theory gives *S* and *Z* in closed form. For a
+nonspherical particle — an oblate raindrop, a columnar ice crystal — you
+need a method that handles arbitrary shapes and orientations. The
+**T-matrix method** (Waterman 1971; Mishchenko 1991) expands the incident
+and scattered fields in spherical vector wave functions and solves for the
+expansion coefficients that link them. The key property is that the T-matrix
+depends only on the particle's *shape, size, and refractive index* — the
+incident direction enters only at the very end. Solve the T-matrix once,
+reuse it across every incidence/scattering geometry.
+
+This package is a Rust port of the numerical core of
+[pytmatrix](https://github.com/jleinonen/pytmatrix), which itself wraps
+[Mishchenko's Fortran T-matrix code](https://www.giss.nasa.gov/staff/mmishchenko/t_matrix.html).
+The motivation is portable builds, modern tooling, and the freedom to
+parallelise the PSD and orientation loops in Rust with the GIL released.
+
+**References.** Mishchenko & Travis (1998), *JQSRT* 60(3): 309–324, for
+the algorithm. Leinonen (2014), *Optics Express* 22: 1655, for pytmatrix.
+
+---
 
 ## Installation
 
 ```bash
 # From a checkout:
-git clone <your-fork-of-this-repo> rupytmatrix
-cd rupytmatrix
+git clone <your-fork-of-this-repo> rustmatrix
+cd rustmatrix
 
 # Dev install — builds the Rust extension and puts it on sys.path.
 pip install maturin
@@ -37,74 +68,121 @@ maturin develop --release
 
 # Or build a wheel:
 maturin build --release
-pip install target/wheels/rupytmatrix-*.whl
+pip install target/wheels/rustmatrix-*.whl
 ```
 
 Requires a Rust toolchain (`rustup default stable`, 1.75+) and Python 3.9+.
+For parity testing against the original, also `pip install pytmatrix` (needs
+`gfortran`).
 
-## Usage
+---
 
-The `Scatterer` class is API-compatible with `pytmatrix.tmatrix.Scatterer`:
+## Quick start
 
 ```python
-from rupytmatrix import Scatterer
+from rustmatrix import Scatterer
 
 s = Scatterer(
-    radius=1.0,                     # mm, equal-volume-sphere radius
-    wavelength=33.3,                # mm, X-band
-    m=complex(7.99, 2.21),          # water at 10 GHz
-    axis_ratio=1.0,                 # 1.0 = sphere
-    ddelt=1e-4,                     # convergence tolerance
-    ndgs=2,                         # quadrature density factor
+    radius=1.0,                  # mm — equal-volume-sphere radius
+    wavelength=33.3,             # mm — X-band
+    m=complex(7.99, 2.21),       # water refractive index at 10 GHz, 10 °C
+    axis_ratio=1.0,              # 1.0 = sphere; >1 oblate, <1 prolate
+    ddelt=1e-4,                  # T-matrix convergence tolerance
+    ndgs=2,                      # quadrature density factor
 )
-s.set_geometry((90.0, 90.0, 0.0, 180.0, 0.0, 0.0))
+# (thet0, thet, phi0, phi, alpha, beta): incidence/scatter + Euler
+s.set_geometry((90.0, 90.0, 0.0, 180.0, 0.0, 0.0))  # horizontal backscatter
 S, Z = s.get_SZ()
 ```
+
+`S` is a 2×2 complex numpy array; `Z` is 4×4 real. All downstream helpers
+(`rustmatrix.radar`, `rustmatrix.scatter`) take a `Scatterer` and do the
+bookkeeping for you — see the tutorials below.
 
 Shape constants follow pytmatrix's conventions (`SHAPE_SPHEROID = -1`,
 `SHAPE_CYLINDER = -2`, `SHAPE_CHEBYSHEV = 1`).
 
-See `examples/basic_usage.py`.
+---
 
-## Architecture
+## Guided tour
 
+The `examples/` directory contains a numbered tutorial set. Each tutorial
+ships as both a runnable `.py` script and a matching `.ipynb` notebook
+(same code, plus matplotlib plots and narrative markdown):
+
+1. **`01_sphere_mie.py`** — sphere at X-band. Verifies the T-matrix against
+   closed-form Mie. Mirrors the sanity checks in
+   `tests/test_parity_pytmatrix.py::test_sphere_parity`.
+2. **`02_raindrop_zdr.py`** — one 2 mm oblate raindrop at C-band. Computes
+   *Z*<sub>h</sub>, *Z*<sub>dr</sub>, *δ*<sub>hv</sub> via
+   `rustmatrix.radar`, using `tmatrix_aux.dsr_thurai_2007` for the axis
+   ratio and the tabulated 10 °C water index.
+3. **`03_psd_gamma_rain.py`** — gamma PSD across 0.1–8 mm. Tabulates *S*, *Z*
+   once with `PSDIntegrator`, then evaluates *Z*<sub>h</sub>,
+   *Z*<sub>dr</sub>, *K*<sub>dp</sub>, *A*<sub>i</sub> across rain rates.
+   This is where the parallel Rust tabulator earns its speedup.
+4. **`04_oriented_ice.py`** — pristine columnar ice crystal at W-band with a
+   Gaussian canting PDF. Compares `orient_averaged_fixed` (fast, smooth)
+   against `orient_averaged_adaptive` (accurate, expensive) and uses
+   `refractive.mi` for the ice index.
+5. **`05_radar_band_sweep.py`** — same particle across S/C/X/Ku/Ka/W. Shows
+   how *Z*<sub>dr</sub> and *K*<sub>dp</sub> vary with wavelength and is the
+   natural jumping-off point for multi-frequency retrieval papers.
+
+Each script completes in under about 30 s on a laptop so the reader can
+iterate. Every tutorial's module docstring notes which `pytmatrix` section
+it mirrors.
+
+---
+
+## Capabilities at a glance
+
+| rustmatrix module | pytmatrix counterpart | What it does | Key public symbols |
+|---|---|---|---|
+| `rustmatrix` | `pytmatrix.tmatrix` | Core solver + `Scatterer` class | `Scatterer`, `calctmat`, `mie_qsca`, `mie_qext`, `SHAPE_*`, `RADIUS_*` |
+| `orientation` | `pytmatrix.orientation` | Orientation-averaging rules | `orient_single`, `orient_averaged_fixed`, `orient_averaged_adaptive`, `gaussian_pdf`, `uniform_pdf` |
+| `psd` | `pytmatrix.psd` | Particle-size-distribution integration | `PSDIntegrator`, `GammaPSD`, `ExponentialPSD`, `UnnormalizedGammaPSD`, `BinnedPSD` |
+| `radar` | `pytmatrix.radar` | Polarimetric radar observables | `radar_xsect`, `refl` (`Zi`), `Zdr`, `delta_hv`, `rho_hv`, `Kdp`, `Ai` |
+| `scatter` | `pytmatrix.scatter` | Angular-integrated scattering helpers | `sca_intensity`, `sca_xsect`, `ext_xsect`, `ssa`, `asym`, `ldr` |
+| `refractive` | `pytmatrix.refractive` | Refractive-index helpers | `mg_refractive`, `bruggeman_refractive`, `m_w_0C/10C/20C`, `mi`, `ice_refractive` |
+| `tmatrix_aux` | `pytmatrix.tmatrix_aux` | Radar-band presets + drop-shape relations | `wl_S…wl_W`, `K_w_sqr`, `geom_horiz_back/forw`, `dsr_thurai_2007`, `dsr_pb`, `dsr_bc` |
+| `quadrature` | `pytmatrix.quadrature` | Gautschi quadrature for orientation PDFs | `get_points_and_weights`, `discrete_gautschi` |
+
+---
+
+## Migrating from pytmatrix
+
+The common cases need no code changes beyond the imports:
+
+```python
+# before
+from pytmatrix.tmatrix import Scatterer
+from pytmatrix import orientation, psd, radar, refractive, tmatrix_aux
+
+# after
+from rustmatrix import Scatterer
+from rustmatrix import orientation, psd, radar, refractive, tmatrix_aux
 ```
-rupytmatrix/
-├─ Cargo.toml                  # Rust crate (PyO3 + maturin)
-├─ pyproject.toml              # Python build (maturin backend)
-├─ src/
-│  ├─ lib.rs                   # Module root + Python extension entrypoint
-│  ├─ quadrature.rs            # Gauss-Legendre (port of Mishchenko's GAUSS)
-│  ├─ special.rs               # spherical Bessel (RJB, RYB, CJB)
-│  ├─ wigner.rs                # Wigner d-functions (VIG, VIGAMPL)
-│  ├─ shapes.rs                # Particle shapes (RSP1/2/3/4)
-│  ├─ mie.rs                   # Closed-form Mie for the sphere limit
-│  ├─ tmatrix.rs               # T-matrix solver (CALCTMAT, CONST, VARY, TMATR0, TMATR)
-│  ├─ amplitude.rs             # Amplitude + phase matrix (CALCAMPL, AMPL)
-│  └─ pybindings.rs            # PyO3 exposure
-├─ python/rupytmatrix/
-│  ├─ __init__.py              # Public Python API
-│  ├─ scatterer.py             # Scatterer class (matches pytmatrix signature)
-│  └─ _core.pyi                # Type stubs for the Rust extension
-├─ tests/
-│  ├─ conftest.py              # pytmatrix-availability fixture
-│  ├─ test_mie.py              # Mie unit tests
-│  ├─ test_scatterer_api.py    # API smoke tests
-│  ├─ test_parity_pytmatrix.py # Parity vs. original pytmatrix (skipped if missing)
-│  └─ test_quadrature_python.py
-├─ examples/basic_usage.py
-├─ benches/                    # (empty — reserved for cargo-bench suites)
-└─ .github/workflows/ci.yml
-```
 
-Heavy linear algebra is handled by `nalgebra` (complex LU inversion for the
-Q matrix). This replaces the `lpd.f` LAPACK routines that ship with the
-original pytmatrix Fortran backend.
+Notes:
+
+* The `Scatterer` constructor, attributes (`radius`, `wavelength`, `m`,
+  `axis_ratio`, `shape`, `ddelt`, `ndgs`, `alpha`, `beta`, `thet0/thet`,
+  `phi0/phi`, `Kw_sqr`, `orient`, `or_pdf`, `n_alpha`, `n_beta`,
+  `psd_integrator`, `psd`), and methods (`get_S`, `get_Z`, `get_SZ`,
+  `set_geometry`, `get_geometry`) are identical.
+* Shape / radius constants use the same integer values.
+* `PSDIntegrator.init_scatter_table` is transparently parallelised across
+  diameters via rayon — no caller changes.
+* Legacy pytmatrix kwargs (`axi`, `lam`, `eps`, `rat`, `np`, `scatter`) still
+  work but raise a `DeprecationWarning`.
+
+---
 
 ## Status
 
-**Numerically verified** against pytmatrix (Fortran backend) for all supported
-shapes. All 7 parity tests pass at tolerances ≤ 5×10⁻³ for S and Z:
+Numerically verified against pytmatrix (Fortran backend). All seven parity
+tests pass at the tolerances below:
 
 | Shape | Test | Tolerance |
 |---|---|---|
@@ -114,56 +192,43 @@ shapes. All 7 parity tests pass at tolerances ≤ 5×10⁻³ for S and Z:
 | Spheroid (`axis_ratio=1.5`) | ✅ pass | 5×10⁻³ |
 | Finite cylinder | ✅ pass | 5×10⁻³ |
 
+Additional PSD / orientation / angular-integration parity tests live in
+`tests/test_parity_pytmatrix.py`.
+
 Fully implemented and unit-tested (`cargo test --lib`, `pytest`):
 
-* Gauss-Legendre quadrature with endpoint / half-range options.
-* Spherical Bessel `j_n`, `y_n` (real argument, up-recurrence).
-* Spherical Bessel `j_n` of complex argument (down-recurrence, Mishchenko's CJB).
-* Riccati-Bessel wrappers with correct derivative conventions.
-* Wigner d-function helpers `VIG` / `VIGAMPL`.
-* Shape radii for spheroid, Chebyshev, cylinder, gen-Chebyshev.
-* Closed-form Mie scattering (sphere baseline).
-* `tmatrix::tmatr0` — `m = 0` azimuthal block of T.
-* `tmatrix::tmatr` — `m > 0` azimuthal blocks of T.
-* `amplitude::ampl` — amplitude matrix rotation / summation.
+* Gauss-Legendre quadrature, spherical Bessel functions, Wigner *d*,
+  shape radii (spheroid / Chebyshev / cylinder / generalised Chebyshev),
+  closed-form Mie baseline.
+* T-matrix blocks `tmatr0` (m = 0) and `tmatr` (m > 0); amplitude-matrix
+  rotation/summation `ampl`.
 * Full PyO3 Python API: `calctmat`, `calcampl`, `Scatterer`.
-* Orientation averaging: `orient_single` (default), `orient_averaged_fixed`
-  (Gauss quadrature in β, uniform sampling in α), and
-  `orient_averaged_adaptive` (scipy `dblquad`). Ported pure-Python from
-  pytmatrix and parity-verified against it.
-* `gaussian_pdf` / `uniform_pdf` orientation PDFs and the Gautschi-based
-  `get_points_and_weights` quadrature helper (used internally by
-  `orient_averaged_fixed`).
-* Size-distribution integration: `ExponentialPSD`, `UnnormalizedGammaPSD`,
-  `GammaPSD`, `BinnedPSD`, and `PSDIntegrator` (tabulate-then-trapezoid
-  averaging over an ``N(D)``). All four tabulation paths — single
-  orientation, fixed-quadrature orientation averaging, adaptive
-  orientation averaging, and single-orient `angular_integration=True`
-  (per-diameter `sca_xsect` / `ext_xsect` / `asym`) — are implemented
-  in Rust and parallelised across diameters via `rayon` (GIL released).
-  Against Fortran pytmatrix: ~4× on single-orient PSD, ~10× on
-  orientation-averaged PSD (64 points), ~300× on `angular_integration`
-  (64 points), and ~400× on orient-averaged-adaptive PSD. Parity-verified
-  against pytmatrix on all four paths.
-* Angular-integrated scattering helpers (`sca_intensity`, `ldr`,
-  `sca_xsect`, `ext_xsect`, `ssa`, `asym`) and radar-band auxiliary
-  constants (`wl_S`..`wl_W`, `K_w_sqr`, geometry presets, Thurai /
-  Pruppacher-Beard / Beard-Chuang drop-shape relationships).
-* Refractive-index helpers: Maxwell-Garnett and Bruggeman EMAs,
-  tabulated water refractive indices at 0/10/20 °C for all six radar
-  bands, and an ice/snow interpolator bundled with the Warren ice
-  optical-constants table (``rupytmatrix.refractive.mi``).
-* Polarimetric radar observables: `radar_xsect`, `refl`/`Zi`, `Zdr`,
-  `delta_hv`, `rho_hv`, `Kdp`, `Ai` (direct port of pytmatrix's
-  `radar.py`, works on both single orientations and PSD-integrated
-  scatterers).
+* Orientation averaging: `orient_single`, `orient_averaged_fixed`
+  (Gauss quadrature in β, uniform sampling in α),
+  `orient_averaged_adaptive` (scipy `dblquad` on the Python side, fixed
+  GL grid on the Rust fast path).
+* PSD classes (`GammaPSD`, `ExponentialPSD`, `UnnormalizedGammaPSD`,
+  `BinnedPSD`) and `PSDIntegrator`. All four tabulation paths —
+  single-orient, fixed-orient-avg, adaptive-orient-avg,
+  `angular_integration=True` — are parallelised across diameters with
+  the GIL released.
+* Polarimetric radar observables (`radar_xsect`, `refl`/`Zi`, `Zdr`,
+  `delta_hv`, `rho_hv`, `Kdp`, `Ai`) and angular-integrated helpers
+  (`sca_xsect`, `ext_xsect`, `ssa`, `asym`, `ldr`, `sca_intensity`).
+* Refractive-index helpers: Maxwell-Garnett / Bruggeman EMAs; tabulated
+  water indices at 0/10/20 °C across the six radar bands; Warren ice
+  interpolator (`refractive.mi`).
+* Radar-band presets (`wl_S`…`wl_W`, `K_w_sqr`), canned geometries, and
+  Thurai / Pruppacher-Beard / Beard-Chuang drop-shape relations.
+
+---
 
 ## Performance
 
 Against the Fortran `pytmatrix` backend on the same machine (Apple M-series,
-`benches/bench_vs_pytmatrix.py`; positive ratio = rupytmatrix faster):
+`benches/bench_vs_pytmatrix.py`; positive ratio = rustmatrix faster):
 
-| Workload | pytmatrix (Fortran) | rupytmatrix (Rust) | Speedup |
+| Workload | pytmatrix (Fortran) | rustmatrix (Rust) | Speedup |
 |---|---:|---:|---:|
 | `calctmat` only (spheroid, ax = 1.5) | 0.22 ms | 0.21 ms | 1.1× |
 | Single orientation, cold (fresh `Scatterer`) | 0.23 ms | 0.26 ms | 0.9× (slower) |
@@ -179,23 +244,22 @@ Against the Fortran `pytmatrix` backend on the same machine (Apple M-series,
 
 Headline notes:
 
-* The core T-matrix solve is roughly tied — heavily-optimised Fortran plus
-  LAPACK is hard to beat on pure linear algebra, so "comparable" is the
-  expected result there.
+* The core T-matrix solve is roughly tied — optimised Fortran plus LAPACK
+  is hard to beat on pure linear algebra.
 * The big wins come from moving the outer loops into Rust: orientation
-  averaging (~6× on a single particle) and especially PSD tabulation
-  (~4× single-orient, ~10× combined with orient averaging), because the
-  per-diameter T-matrix solves are independent and `rayon` parallelises
-  them across cores with the GIL released.
-* The outlier 100×–400× speedups on `angular_integration` and
+  averaging (~6× on a single particle) and PSD tabulation (~4× single-orient,
+  ~10× combined with orient averaging), because per-diameter T-matrix solves
+  are independent and rayon parallelises them across cores with the GIL
+  released.
+* The 100×–400× speedups on `angular_integration` and
   `orient_averaged_adaptive` come from replacing scipy's per-diameter
   `dblquad` callbacks with a fixed Gauss-Legendre product grid evaluated
-  inside Rust. The callbacks cross the Python/Fortran boundary hundreds
-  of times per diameter on pytmatrix; the Rust path amortises the
-  T-matrix solve across the whole grid and runs diameters in parallel.
+  inside Rust. The callbacks cross the Python/Fortran boundary hundreds of
+  times per diameter on pytmatrix; the Rust path amortises the T-matrix
+  solve across the whole grid and runs diameters in parallel.
 * The ~16% slowdown on the "single orient cold" case is Python/PyO3
-  boundary overhead that F2PY avoids. It disappears as soon as the
-  T-matrix is reused (cached re-eval, orientation averaging, PSD tabulation).
+  boundary overhead that f2py avoids. It disappears as soon as the
+  T-matrix is reused (cached re-eval, orient averaging, PSD tabulation).
 
 Reproduce with:
 
@@ -204,13 +268,44 @@ pip install pytmatrix    # needs gfortran
 python benches/bench_vs_pytmatrix.py
 ```
 
+---
+
+## Architecture
+
+```
+rustmatrix/
+├─ Cargo.toml                  # Rust crate (PyO3 + maturin)
+├─ pyproject.toml              # Python build (maturin backend)
+├─ src/
+│  ├─ lib.rs                   # Module root + Python extension entrypoint
+│  ├─ quadrature.rs            # Gauss-Legendre (port of Mishchenko's GAUSS)
+│  ├─ special.rs               # spherical Bessel (RJB, RYB, CJB)
+│  ├─ wigner.rs                # Wigner d-functions (VIG, VIGAMPL)
+│  ├─ shapes.rs                # Particle shapes (RSP1/2/3/4)
+│  ├─ mie.rs                   # Closed-form Mie for the sphere limit
+│  ├─ tmatrix.rs               # T-matrix solver (CALCTMAT, CONST, VARY, TMATR0, TMATR)
+│  ├─ amplitude.rs             # Amplitude + phase matrix (CALCAMPL, AMPL)
+│  └─ pybindings.rs            # PyO3 exposure (incl. parallel PSD tabulators)
+├─ python/rustmatrix/         # Pure-Python surface (Scatterer, psd, radar, …)
+├─ tests/                      # pytest + parity suite
+├─ examples/                   # numbered tutorials (.py + .ipynb)
+├─ benches/bench_vs_pytmatrix.py
+└─ .github/workflows/ci.yml
+```
+
+Heavy linear algebra (complex LU for the Q matrix) is handled by `nalgebra`,
+replacing the `lpd.f` LAPACK routines that ship with the original Fortran
+backend.
+
+---
+
 ## Running the tests
 
 ```bash
 # Rust-only tests (fast, no Python needed):
 cargo test --lib
 
-# Full test suite (requires maturin develop first):
+# Full Python test suite (requires maturin develop first):
 pytest -v tests/
 
 # Parity tests against pytmatrix (requires pytmatrix installed):
@@ -220,7 +315,9 @@ pytest -v tests/test_parity_pytmatrix.py
 
 CI runs the Rust + Python tests across Python 3.10 / 3.11 / 3.12 / 3.13
 on Linux. Parity tests against pytmatrix run locally when the package is
-installed; they're not in CI because pytmatrix needs gfortran.
+installed; they're not in CI because pytmatrix needs `gfortran`.
+
+---
 
 ## License
 
@@ -228,6 +325,6 @@ MIT. See [LICENSE](./LICENSE).
 
 Upstream credits:
 
-* Jussi Leinonen — pytmatrix (the Python wrapper and modifications that
-  made the Mishchenko code MIT-compatible).
+* Jussi Leinonen — pytmatrix (the Python wrapper and the modifications
+  that made the Mishchenko code MIT-compatible).
 * Michael I. Mishchenko (NASA GISS) — the underlying T-matrix Fortran code.

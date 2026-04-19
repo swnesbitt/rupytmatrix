@@ -9,7 +9,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from rupytmatrix import mie_qext, mie_qsca
+from rustmatrix import mie_qext, mie_qsca
 
 
 def test_rayleigh_limit_water_sphere():

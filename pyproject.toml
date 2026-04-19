@@ -3,7 +3,7 @@ requires = ["maturin>=1.5,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "rupytmatrix"
+name = "rustmatrix"
 version = "0.1.0"
 description = "Rust-backed T-matrix scattering for nonspherical particles (port of pytmatrix)"
 readme = "README.md"
@@ -57,14 +57,14 @@ dev = [
 # by injecting numpy into pytmatrix's build environment.
 
 [project.urls]
-Repository = "https://github.com/swnesbitt/rupytmatrix"
-Issues = "https://github.com/swnesbitt/rupytmatrix/issues"
+Repository = "https://github.com/swnesbitt/rustmatrix"
+Issues = "https://github.com/swnesbitt/rustmatrix/issues"
 
 [tool.maturin]
 # Target Python 3.13 (plus back-compat via abi3-py38). The extension
-# lives under `python/rupytmatrix/` alongside pure-Python modules.
+# lives under `python/rustmatrix/` alongside pure-Python modules.
 python-source = "python"
-module-name = "rupytmatrix._core"
+module-name = "rustmatrix._core"
 features = ["pyo3/extension-module"]
 # Ensure abi3 so a single wheel works across Python versions.
 strip = true
@@ -75,7 +75,7 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-ra --strict-markers"
 markers = [
-    "parity: tests that compare rupytmatrix to the original pytmatrix",
+    "parity: tests that compare rustmatrix to the original pytmatrix",
     "slow: long-running tests",
 ]
 

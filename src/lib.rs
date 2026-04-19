@@ -1,4 +1,4 @@
-//! # rupytmatrix
+//! # rustmatrix
 //!
 //! Rust-backed T-matrix scattering for nonspherical particles.
 //!
@@ -65,7 +65,7 @@ mod pybindings;
 
 use pyo3::prelude::*;
 
-/// Python module entrypoint. Maturin wires this up as `rupytmatrix._core`.
+/// Python module entrypoint. Maturin wires this up as `rustmatrix._core`.
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     pybindings::register(m)

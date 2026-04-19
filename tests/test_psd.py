@@ -11,8 +11,8 @@ import numpy as np
 import pytest
 from scipy.integrate import quad
 
-from rupytmatrix import Scatterer
-from rupytmatrix.psd import (
+from rustmatrix import Scatterer
+from rustmatrix.psd import (
     BinnedPSD,
     ExponentialPSD,
     GammaPSD,
@@ -211,7 +211,7 @@ def test_psd_integrator_honours_axis_ratio_func_and_m_func(sphere):
 
 def test_psd_integrator_multiple_geometries(sphere):
     """Tabulating multiple geometries produces distinct entries."""
-    from rupytmatrix.tmatrix_aux import geom_horiz_back, geom_horiz_forw
+    from rustmatrix.tmatrix_aux import geom_horiz_back, geom_horiz_forw
 
     sphere.psd_integrator = PSDIntegrator(geometries=(geom_horiz_back, geom_horiz_forw))
     sphere.psd_integrator.D_max = 2.0

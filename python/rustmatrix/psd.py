@@ -39,7 +39,13 @@ except ImportError:  # numpy < 2.0
 
 
 class PSD:
-    """Abstract PSD base class; default behaviour is identically zero."""
+    """Abstract PSD base class.
+
+    Subclasses override ``__call__(D) -> number density [mm⁻¹ m⁻³]`` and
+    ``__eq__`` (used by :class:`PSDIntegrator` to decide when the cached
+    PSD-weighted integrals are stale). The base class returns 0 for all
+    diameters and never equals another PSD.
+    """
 
     def __call__(self, D):
         if np.shape(D) == ():
@@ -51,9 +57,18 @@ class PSD:
 
 
 class ExponentialPSD(PSD):
-    """Exponential PSD ``N(D) = N0 exp(-Lambda D)``.
+    """Exponential (Marshall-Palmer-type) PSD.
 
-    Truncates at ``D_max`` (default ``11/Lambda ~ 3*D0``).
+    ``N(D) = N0 · exp(-Λ·D)`` for ``D ≤ D_max`` and 0 beyond.
+
+    Parameters
+    ----------
+    N0 : float
+        Intercept parameter [mm⁻¹ m⁻³]. Default 1.0.
+    Lambda : float
+        Slope parameter Λ [mm⁻¹]. Default 1.0.
+    D_max : float, optional
+        Truncation diameter in mm. Defaults to ``11 / Lambda`` (≈ 3·D0).
     """
 
     def __init__(self, N0: float = 1.0, Lambda: float = 1.0, D_max: Optional[float] = None):
@@ -83,7 +98,20 @@ class ExponentialPSD(PSD):
 
 
 class UnnormalizedGammaPSD(ExponentialPSD):
-    """``N(D) = N0 * D^mu * exp(-Lambda D)`` (unnormalised gamma)."""
+    """Unnormalised gamma PSD: ``N(D) = N0 · D^μ · exp(-Λ·D)``.
+
+    Parameters
+    ----------
+    N0, Lambda, D_max
+        As :class:`ExponentialPSD`.
+    mu : float
+        Shape parameter μ (``0`` reduces to :class:`ExponentialPSD`).
+
+    Notes
+    -----
+    The ``D^μ`` term is evaluated in log-space to avoid overflow for large
+    μ. Taking ``D = 0`` returns 0.
+    """
 
     def __init__(
         self,
@@ -113,10 +141,26 @@ class UnnormalizedGammaPSD(ExponentialPSD):
 
 
 class GammaPSD(PSD):
-    """Normalised gamma PSD (Bringi/Chandrasekar convention).
+    """Normalised gamma PSD (Bringi & Chandrasekar convention).
 
-    ``N(D) = Nw * f(mu) * (D/D0)^mu * exp(-(3.67+mu) D/D0)``,
-    ``f(mu) = 6/3.67^4 * (3.67+mu)^(mu+4) / Gamma(mu+4)``.
+    ``N(D) = N_w · f(μ) · (D/D0)^μ · exp(-(3.67+μ) D/D0)``, with
+    ``f(μ) = 6 / 3.67⁴ · (3.67+μ)^(μ+4) / Γ(μ+4)``.
+
+    Parameters
+    ----------
+    D0 : float
+        Median volume diameter in mm. Default 1.0.
+    Nw : float
+        Intercept parameter [mm⁻¹ m⁻³]. Default 1.0.
+    mu : float
+        Shape parameter μ. Default 0 (reduces to exponential).
+    D_max : float, optional
+        Truncation diameter in mm. Defaults to ``3 · D0``.
+
+    References
+    ----------
+    Bringi, V. N., & Chandrasekar, V. (2001). *Polarimetric Doppler
+    Weather Radar*, Cambridge University Press.
     """
 
     def __init__(
@@ -156,7 +200,16 @@ class GammaPSD(PSD):
 
 
 class BinnedPSD(PSD):
-    """Step-function PSD from ``bin_edges`` (n+1 values) and ``bin_psd`` (n)."""
+    """Step-function PSD specified by bin edges and per-bin number densities.
+
+    Parameters
+    ----------
+    bin_edges : sequence of float, length n+1
+        Monotonically increasing bin edges in mm.
+    bin_psd : sequence of float, length n
+        Per-bin number densities [mm⁻¹ m⁻³]. ``bin_psd[i]`` applies to
+        ``D`` in ``(bin_edges[i], bin_edges[i+1]]``.
+    """
 
     def __init__(self, bin_edges, bin_psd):
         if len(bin_edges) != len(bin_psd) + 1:
@@ -194,22 +247,44 @@ class BinnedPSD(PSD):
 
 
 class PSDIntegrator:
-    """Integrates scattering properties over a particle-size distribution.
+    """Integrate scattering properties over a particle-size distribution.
 
-    Attach an instance to ``Scatterer.psd_integrator`` and set
-    ``Scatterer.psd``; then :meth:`Scatterer.get_SZ` returns the
-    PSD-averaged ``(S, Z)``.
+    Usage
+    -----
+    Attach an instance to ``Scatterer.psd_integrator``, configure
+    ``num_points``, ``D_max``, optional ``axis_ratio_func``/``m_func``, and
+    ``geometries``, then call
+    :meth:`init_scatter_table` once to build the diameter-indexed lookup
+    tables. Thereafter setting ``Scatterer.psd`` to any :class:`PSD`
+    instance and calling :meth:`Scatterer.get_SZ` (or the radar / scatter
+    helpers) returns the PSD-integrated result via trapezoidal
+    integration over the pre-tabulated ``S(D)`` and ``Z(D)``.
 
-    Attributes:
-        num_points: number of diameters used to sample the lookup table.
-        m_func: optional callable ``m(D)`` to vary refractive index with
-            diameter. If ``None`` the scatterer's single ``m`` is used.
-        axis_ratio_func: optional callable ``eps(D)`` for drop-shape
-            relationships.
-        D_max: largest diameter to tabulate (usually the largest ``D_max``
-            of any PSD that will be passed in).
-        geometries: tuple of ``(thet0, thet, phi0, phi, alpha, beta)``
-            scattering geometries to precompute.
+    Attributes
+    ----------
+    num_points : int
+        Number of diameters sampled between ``D_max/num_points`` and
+        ``D_max``. Default 1024.
+    m_func : callable, optional
+        ``m(D) -> complex`` — varies refractive index with diameter.
+        ``None`` uses the scatterer's scalar ``m``.
+    axis_ratio_func : callable, optional
+        ``eps(D) -> float`` — varies axis ratio with diameter (e.g.
+        :func:`tmatrix_aux.dsr_thurai_2007`).
+    D_max : float
+        Largest diameter to tabulate in mm. Must cover every PSD the
+        table will be used with.
+    geometries : tuple of 6-tuples
+        ``(thet0, thet, phi0, phi, alpha, beta)`` scattering geometries
+        to precompute. Typically includes both backscatter and forward
+        geometries when K_dp / A_i are needed.
+
+    Notes
+    -----
+    :meth:`init_scatter_table` dispatches to one of four parallel Rust
+    fast paths (single orientation, fixed-orient-avg, adaptive-orient-avg,
+    single-orient + angular integration); see the module docstring for
+    details and the README *Performance* section for benchmarks.
     """
 
     attrs = {"num_points", "m_func", "axis_ratio_func", "D_max", "geometries"}
@@ -234,7 +309,22 @@ class PSDIntegrator:
         return self.get_SZ(psd, geometry)
 
     def get_SZ(self, psd, geometry):
-        """PSD-integrated ``(S, Z)`` for the given scattering geometry."""
+        """PSD-integrated ``(S, Z)`` at the given geometry.
+
+        Parameters
+        ----------
+        psd : PSD
+            Particle-size distribution.
+        geometry : 6-tuple
+            One of the geometries registered when
+            :meth:`init_scatter_table` was called.
+
+        Returns
+        -------
+        S, Z : ndarray
+            PSD-weighted trapezoidal integrals of the precomputed
+            ``S(D)`` and ``Z(D)`` lookup tables.
+        """
         if self._S_table is None or self._Z_table is None:
             raise AttributeError("Initialize or load the scattering table first.")
 
@@ -290,14 +380,31 @@ class PSDIntegrator:
         raise ValueError(f"Unknown property_name {property_name!r}")
 
     def init_scatter_table(self, tm, angular_integration: bool = False, verbose: bool = False):
-        """Populate the diameter-indexed lookup tables.
+        """Populate the diameter-indexed ``S(D)`` / ``Z(D)`` lookup tables.
 
-        Walks ``self.num_points`` equally-spaced diameters from
-        ``D_max/num_points`` to ``D_max``, evaluates ``tm.get_SZ_orient()``
-        at each of the registered ``self.geometries``, and caches the
-        amplitude/phase matrices. If ``angular_integration=True`` also
-        tabulates polarised scattering and extinction cross-sections and
-        the asymmetry parameter at each diameter.
+        Parameters
+        ----------
+        tm : Scatterer
+            Template scatterer; its ``wavelength``, ``m``, ``ddelt``,
+            ``ndgs``, ``shape``, ``radius_type``, ``orient``, and
+            ``or_pdf`` are copied.
+        angular_integration : bool
+            If True, also tabulates the polarised scattering and
+            extinction cross-sections and the asymmetry parameter at each
+            diameter. Required before calling
+            :func:`scatter.sca_xsect`, :func:`scatter.asym`, or their
+            radar derivatives (:func:`radar.Ai`) on a PSD-integrated
+            scatterer.
+        verbose : bool
+            Print per-diameter progress when falling back to the Python
+            loop (used only for combinations without a Rust fast path).
+
+        Notes
+        -----
+        Dispatches into one of four Rust fast paths depending on
+        ``tm.orient`` and ``angular_integration`` — see the README
+        *Performance* section for benchmarks. All four release the GIL
+        and parallelise across diameters via rayon.
         """
         if self.D_max is None:
             raise AttributeError("PSDIntegrator.D_max must be set before init_scatter_table.")
