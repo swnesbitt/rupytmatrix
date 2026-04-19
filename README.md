@@ -263,10 +263,17 @@ ships as both a runnable `.py` script and a matching `.ipynb` notebook
    `HydroMix` at X-band, vertical pointing. Demonstrates the bimodal
    Doppler spectrum, locates the ice and rain peaks, reads *ρ*<sub>hv</sub>
    at the inter-mode valley, and round-trips through `collapse_to_bulk`.
+9. **`09_zhu_2023_particle_inertia.py`** — reproduces the W-band,
+   exponential-warm-rain configuration of
+   [Zhu, Kollias, Yang 2023](https://zenodo.org/records/7897981) and
+   compares conventional Gaussian broadening to the inertia-aware
+   `InertialZeng2023` kernel. Large drops under-respond to small-scale
+   eddies, so the Doppler spectrum narrows on its fast-falling tail — the
+   paper's central finding.
 
 Each script completes in under about 30 s on a laptop so the reader can
 iterate. Every tutorial's module docstring notes which `pytmatrix` section
-it mirrors (tutorials 6–8 cover functionality new to rustmatrix).
+it mirrors (tutorials 6–9 cover functionality new to rustmatrix).
 
 ---
 
