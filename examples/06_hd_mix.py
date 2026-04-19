@@ -2,7 +2,7 @@
 
 Physics question
 ----------------
-Real radar volumes rarely contain a single hydrometeor species. Melting
+Real radar volumes sometimes contain more than a single hydrometeor species. Melting
 layers, convective updrafts, and mixed-phase clouds all mix water drops
 with ice in varying proportions. The combined polarimetric signature is
 the incoherent sum of the per-species contributions — but the *non*-linear

@@ -382,7 +382,7 @@ NB06 = [
     md(
         "# Tutorial 06 — Hydrometeor mixtures at C-band\n",
         "\n",
-        "Real radar volumes almost always contain more than one species —\n",
+        "Real radar volumes sometimes contain more than a single species —\n",
         "rain with melting ice, pristine crystals with aggregates, graupel\n",
         "in the mixed phase. The combined polarimetric signature is the\n",
         "incoherent sum of the per-species S and Z matrices; the\n",
