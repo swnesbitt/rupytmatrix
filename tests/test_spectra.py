@@ -44,6 +44,10 @@ from rustmatrix.tmatrix_aux import (
     wl_X,
 )
 
+# Canonical Nyquist-like velocity grid used by every spectrum test that
+# just needs a sensible default: 128 bins spanning ±20 m/s.
+V_MIN, V_MAX, N_BINS = -20.0, 20.0, 128
+
 
 # ---------- fixtures ----------
 
@@ -137,9 +141,9 @@ def test_spectral_integrates_to_bulk_rain(rain_v, turb_kind):
         rain_v,
         fall_speed=spectra.fall_speed.atlas_srivastava_sekhon_1973,
         turbulence=turb,
-        v_min=-2.0,
-        v_max=12.0,
-        n_bins=2048,
+        v_min=V_MIN,
+        v_max=V_MAX,
+        n_bins=N_BINS,
         u_h=u_h,
         beamwidth=theta,
         geometry_backscatter=geom_vert_back,
@@ -184,9 +188,9 @@ def test_spectral_integrates_to_bulk_hydromix(rain_v, ice_v):
                 GaussianTurbulence(0.3),
             ),
         },
-        v_min=-2.0,
-        v_max=12.0,
-        n_bins=2048,
+        v_min=V_MIN,
+        v_max=V_MAX,
+        n_bins=N_BINS,
         geometry_backscatter=geom_vert_back,
         geometry_forward=geom_vert_forw,
     )
@@ -214,7 +218,13 @@ def test_spectral_integrates_to_bulk_hydromix(rain_v, ice_v):
 # ----------------------------------------------------------------------
 
 def test_turbulence_is_gaussian_convolution(rain_v):
-    """sZ_h(σ_t constant) == sZ_h(σ_t=0) ⊛ Gaussian(σ_t)."""
+    """sZ_h(σ_t constant) == sZ_h(σ_t=0) ⊛ Gaussian(σ_t).
+
+    Uses a finely-sampled grid — this is a pure math identity that
+    requires σ >> dv to hold. The operational ±20 m/s / 128 bin grid
+    used elsewhere is much coarser and only valid for bulk-integral
+    identities.
+    """
     v = np.linspace(-2.0, 12.0, 4096)
     sigma = 0.5
 
@@ -247,7 +257,11 @@ def test_turbulence_is_gaussian_convolution(rain_v):
 
 
 def test_beam_broadening_is_gaussian_convolution(rain_v):
-    """u_h·θ_b > 0 broadens by σ_beam = u_h θ_b / (2√(2ln2))."""
+    """u_h·θ_b > 0 broadens by σ_beam = u_h θ_b / (2√(2ln2)).
+
+    Finely-sampled grid — same rationale as
+    :func:`test_turbulence_is_gaussian_convolution`.
+    """
     v = np.linspace(-2.0, 12.0, 4096)
     u_h = 8.0
     theta = np.deg2rad(1.5)
@@ -371,7 +385,7 @@ def test_hydromix_bimodal_spectrum(rain_v, ice_v):
                 GaussianTurbulence(0.1),
             ),
         },
-        v_min=-1.0, v_max=12.0, n_bins=2048,
+        v_min=V_MIN, v_max=V_MAX, n_bins=N_BINS,
     )
     res = integ.run()
 
@@ -440,7 +454,7 @@ def _integ_with_noise(rain, noise):
         rain,
         fall_speed=spectra.fall_speed.atlas_srivastava_sekhon_1973,
         turbulence=GaussianTurbulence(0.3),
-        v_min=-1.0, v_max=12.0, n_bins=512,
+        v_min=V_MIN, v_max=V_MAX, n_bins=N_BINS,
         geometry_backscatter=geom_vert_back,
         noise=noise,
     )

@@ -727,24 +727,28 @@ class SpectralIntegrator:
         v = self.v_bins  # (M,)
         # Per-bin kernel K(v_k, D_i), shape (M, N_D).
         diff = v[:, None] - v_exp[None, :]
-        # σ_eff == 0 → delta: accumulate into nearest bin with weight
-        # 1 / local bin width so the integral is preserved.
+        # Compute per-bin local widths once — used both for the delta-bin
+        # path and for the narrow-Gaussian threshold.
+        dv_edge = np.diff(v)
+        local_width = np.empty_like(v)
+        local_width[1:-1] = 0.5 * (dv_edge[:-1] + dv_edge[1:])
+        local_width[0] = dv_edge[0]
+        local_width[-1] = dv_edge[-1]
+        # Route to the integral-preserving delta path whenever the
+        # Gaussian kernel is too narrow to be resolved by the grid
+        # (σ below half the median bin width). Evaluating a needle-like
+        # Gaussian at bin centers undersamples it; binning the whole
+        # power into the nearest bin gives the correct ∫sZ_h dv.
+        dv_median = float(np.median(local_width))
+        delta_sigma = sigma_eff < 0.5 * dv_median
         K = np.zeros((v.size, D.size), dtype=float)
-        zero_sigma = sigma_eff <= 0
-        if np.any(~zero_sigma):
-            s = sigma_eff[~zero_sigma]
-            K[:, ~zero_sigma] = (
+        if np.any(~delta_sigma):
+            s = sigma_eff[~delta_sigma]
+            K[:, ~delta_sigma] = (
                 1.0 / (np.sqrt(2.0 * np.pi) * s)
-            ) * np.exp(-0.5 * (diff[:, ~zero_sigma] / s) ** 2)
-        if np.any(zero_sigma):
-            # Bin-centered delta: find nearest v_bin, compute local width.
-            # Use np.clip to handle edges; local width = half-distance sum.
-            dv_edge = np.diff(v)
-            local_width = np.empty_like(v)
-            local_width[1:-1] = 0.5 * (dv_edge[:-1] + dv_edge[1:])
-            local_width[0] = dv_edge[0]
-            local_width[-1] = dv_edge[-1]
-            for idx_D in np.where(zero_sigma)[0]:
+            ) * np.exp(-0.5 * (diff[:, ~delta_sigma] / s) ** 2)
+        if np.any(delta_sigma):
+            for idx_D in np.where(delta_sigma)[0]:
                 k = int(np.argmin(np.abs(v - v_exp[idx_D])))
                 if local_width[k] > 0:
                     K[k, idx_D] = 1.0 / local_width[k]
@@ -888,10 +892,19 @@ class SpectralIntegrator:
             # sqrt((1+1/SNR_h)(1+1/SNR_v)). With zero noise this reduces
             # to ρ_signal exactly.
             if noise_psd_h > 0 or noise_psd_v > 0:
-                snr_h = signal_h / noise_psd_h if noise_psd_h > 0 else np.inf
-                snr_v = signal_v / noise_psd_v if noise_psd_v > 0 else np.inf
-                bias = np.sqrt((1 + 1.0 / snr_h) * (1 + 1.0 / snr_v))
-                srho_hv[k] = rho_signal / bias if np.isfinite(bias) else rho_signal
+                # Guard against 0/0: bins with no signal collapse ρ → 0
+                # (the noise-only limit) rather than overflowing.
+                if signal_h <= 0 or signal_v <= 0:
+                    srho_hv[k] = 0.0
+                else:
+                    # Bias factor in the noise/signal form; overflow
+                    # here means SNR≈0, so ρ→0 is the correct physical
+                    # answer — silence the warning and clamp.
+                    with np.errstate(over="ignore"):
+                        n_over_s_h = noise_psd_h / signal_h if noise_psd_h > 0 else 0.0
+                        n_over_s_v = noise_psd_v / signal_v if noise_psd_v > 0 else 0.0
+                        bias = np.sqrt((1.0 + n_over_s_h) * (1.0 + n_over_s_v))
+                    srho_hv[k] = rho_signal / bias if np.isfinite(bias) else 0.0
             else:
                 srho_hv[k] = rho_signal
             sdelta_hv[k] = np.arctan2(Z[2, 3] - Z[3, 2], -Z[2, 2] - Z[3, 3])
