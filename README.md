@@ -4,11 +4,18 @@
 
 # rustmatrix
 
-**Rust-backed T-matrix scattering for nonspherical particles** — a drop-in
-replacement for the numerical core of
-[pytmatrix](https://github.com/jleinonen/pytmatrix), with the Fortran replaced
-by pure Rust behind a PyO3 extension module. Targets **Python 3.9–3.13** via
-ABI3 wheels.
+**Rust-backed T-matrix scattering for nonspherical particles — now with
+Doppler and polarimetric spectra.** A drop-in replacement for the
+numerical core of
+[pytmatrix](https://github.com/jleinonen/pytmatrix), with the Fortran
+replaced by pure Rust behind a PyO3 extension module, extended with
+hydrometeor mixtures (`HydroMix`) and a full Doppler-spectrum engine
+(`rustmatrix.spectra`) that produces sZ_h, sZ_dr, sK_dp, sρ_hv, and
+sδ_hv for single-species or mixed-phase PSDs, with literature fall-speed
+presets, Gaussian turbulence, Zeng et al. 2023 particle-inertia
+turbulence, finite-beamwidth broadening, and optional system noise
+baked in. Targets
+**Python 3.9–3.13** via ABI3 wheels.
 
 If you have existing code that uses `pytmatrix.tmatrix.Scatterer`,
 `pytmatrix.psd`, `pytmatrix.orientation`, `pytmatrix.radar`,
@@ -102,7 +109,7 @@ Shape constants follow pytmatrix's conventions (`SHAPE_SPHEROID = -1`,
 ## Added functionality
 
 rustmatrix is a drop-in replacement for the numerical core of pytmatrix,
-but the port isn't just a transliteration. Two things are genuinely new:
+but the port isn't just a transliteration. Three things are genuinely new:
 
 ### 1. Rust speedups
 
@@ -159,6 +166,63 @@ matrix. Mixing fractions live directly in each species' N(D); there is
 no separate weight scalar. Full end-to-end example in
 [`examples/06_hd_mix.py`](examples/06_hd_mix.py).
 
+### 3. Doppler + polarimetric spectra (`rustmatrix.spectra`)
+
+Profilers, cloud radars, and modern disdrometers measure *spectra* — the
+Doppler-velocity-resolved version of the bulk polarimetric observables.
+`rustmatrix.spectra` reuses the per-diameter *S* and *Z* tables that
+`PSDIntegrator` already caches and produces
+*sZ*<sub>h</sub>(v), *sZ*<sub>dr</sub>(v), *sK*<sub>dp</sub>(v),
+*sρ*<sub>hv</sub>(v), and *sδ*<sub>hv</sub>(v) in one call:
+
+```python
+from rustmatrix import SpectralIntegrator, spectra
+from rustmatrix.tmatrix_aux import geom_vert_back, geom_vert_forw
+
+integ = SpectralIntegrator(
+    rain_scatterer,                            # or a HydroMix
+    fall_speed=spectra.fall_speed.atlas_srivastava_sekhon_1973,
+    turbulence=spectra.InertialZeng2023(sigma_air=0.5, epsilon=1e-3),
+    v_min=-1.0, v_max=12.0, n_bins=1024,
+    u_h=8.0, beamwidth=np.deg2rad(1.0),        # optional beam-broadening
+    geometry_backscatter=geom_vert_back,
+    geometry_forward=geom_vert_forw,
+)
+res = integ.run()
+bulk = res.collapse_to_bulk()                  # round-trip to radar.* helpers
+```
+
+What ships out of the box:
+
+* **Fall-speed presets** — Atlas–Srivastava–Sekhon 1973, Brandes 2002,
+  Beard 1976, Locatelli–Hobbs 1974 (aggregates and graupel), plus a
+  first-class `power_law(a, b, …)` factory and any user-supplied
+  `D → v_t` callable.
+* **Turbulence models** — `NoTurbulence`, `GaussianTurbulence(σ_t)`,
+  and `InertialZeng2023` (diameter-dependent σ_t(D) via Stokes-number
+  low-pass response). A `spectra.turbulence.from_params(sigma=…,
+  epsilon=…)` helper picks Zeng 2023 automatically whenever ε is
+  supplied.
+* **Finite-beamwidth broadening** — `|u_h|·θ_b/(2√(2 ln 2))` added in
+  quadrature to σ_t, so realistic profiler geometries are one
+  keyword away.
+* **Optional system noise** — pass `noise="realistic"` (or a scalar /
+  `(noise_h, noise_v)` tuple in mm⁶ m⁻³) to add a thermal noise floor
+  that biases `sZ_dr`, `sρ_hv`, and `sLDR` the way a real receiver
+  would. The underlying `S_spec` / `Z_spec` stay signal-only so
+  `collapse_to_bulk()` still round-trips exactly.
+* **HydroMix support** — pass a `HydroMix` with per-component
+  `(fall_speed, turbulence)` pairs and the integrator sums each
+  component's spectrum on a shared velocity grid. Bimodal rain+ice
+  spectra with spectral ρ_hv dips between the modes fall out directly.
+* **Exact bulk round-trip** — `SpectralResult.collapse_to_bulk()` sums
+  *S*(v) and *Z*(v) over velocity and hands the result to the existing
+  `rustmatrix.radar` helpers, so the spectral and bulk codepaths agree
+  to numerical tolerance for every observable.
+
+Worked examples that exercise this machinery against published results
+ship as tutorials 07–11 — see the *Guided tour* below.
+
 ---
 
 ## Guided tour
@@ -190,10 +254,47 @@ ships as both a runnable `.py` script and a matching `.ipynb` notebook
    mixture, and reads *Z*<sub>h</sub>, *Z*<sub>dr</sub>, *K*<sub>dp</sub>,
    *A*<sub>i</sub>, and *ρ*<sub>hv</sub> for rain-only, ice-only, and the
    combined case.
+7. **`07_doppler_spectrum_rain.py`** — reproduces
+   [Kollias, Albrecht, Marks 2002](https://doi.org/10.1029/2001JD002033):
+   the 94-GHz raindrop σ<sub>b</sub>(*D*) Mie oscillations map into the
+   Doppler spectrum so that the *first Mie minimum* (≈5.9 m/s in still air)
+   serves as a DSD-independent fiducial for retrieving mean vertical air
+   motion. Also illustrates the delta-binning artifact that can masquerade
+   as physics when the PSD is sampled too sparsely.
+8. **`08_spectral_polarimetry_rain_ice.py`** — reproduces the
+   dual-frequency non-Rayleigh snowfall signature from
+   [Billault-Roux et al. 2023, *AMT*](https://doi.org/10.5194/amt-16-911-2023):
+   identical snow scatterer, PSD, fall-speed, and turbulence run through
+   `SpectralIntegrator` at X-band and W-band, yielding sDWR(*v*) = 10·log<sub>10</sub>(sZ<sub>X</sub>/sZ<sub>W</sub>)
+   that stays near 0 dB at low velocities and rises to several dB at high
+   velocities — the large-particle fingerprint the paper exploits.
+9. **`09_zhu_2023_particle_inertia.py`** — reproduces the W-band,
+   exponential-warm-rain configuration of
+   [Zhu, Kollias, Yang 2023](https://zenodo.org/records/7897981) and
+   compares conventional Gaussian broadening to the inertia-aware
+   `InertialZeng2023` kernel. Large drops under-respond to small-scale
+   eddies, so the Doppler spectrum narrows on its fast-falling tail — the
+   paper's central finding.
+10. **`10_slw_vs_snow.py`** — supercooled liquid water and snow as
+    independent `rustmatrix` scatterers, combined in a `HydroMix` to
+    produce the bimodal W-band Doppler spectrum that motivates the
+    mixed-phase analysis in
+    [Billault-Roux et al. 2023, *ACP*](https://doi.org/10.5194/acp-23-10207-2023).
+    Highlights the 40+ dB Z<sub>h</sub> gap between SLW droplets and snow
+    aggregates and the velocity separation of the two modes.
+11. **`11_honeyager_hydrometeor_classes.py`** — following the T-matrix-as-DDA-proxy
+    framing of
+    [Honeyager 2013](https://fsu.digital.flvc.org/islandora/object/fsu:207427)
+    (MS thesis, Florida State University), parameterises four representative
+    hydrometeor classes — rain, low-density aggregate, graupel, high-density
+    ice — by (ρ<sub>eff</sub>, axis ratio) and walks through single-particle
+    σ<sub>b</sub>(*D*), DWR(*D*), bulk DWR vs. *D*<sub>0</sub>, and the
+    spectral DWR(*v*) that tells an aggregate PSD apart from a graupel PSD
+    even when their bulk Z<sub>h</sub> values overlap.
 
 Each script completes in under about 30 s on a laptop so the reader can
 iterate. Every tutorial's module docstring notes which `pytmatrix` section
-it mirrors.
+it mirrors (tutorials 6–11 cover functionality new to rustmatrix).
 
 ---
 
@@ -205,6 +306,7 @@ it mirrors.
 | `orientation` | `pytmatrix.orientation` | Orientation-averaging rules | `orient_single`, `orient_averaged_fixed`, `orient_averaged_adaptive`, `gaussian_pdf`, `uniform_pdf` |
 | `psd` | `pytmatrix.psd` | Particle-size-distribution integration | `PSDIntegrator`, `GammaPSD`, `ExponentialPSD`, `UnnormalizedGammaPSD`, `BinnedPSD` |
 | `hd_mix` | *(new — no pytmatrix equivalent)* | Multi-species hydrometeor mixtures. Scatterer-shaped so `radar.*` helpers work unchanged. | `HydroMix`, `MixtureComponent` |
+| `spectra` | *(new — no pytmatrix equivalent)* | Doppler + polarimetric spectra (sZ_h, sZ_dr, sK_dp, sρ_hv, sδ_hv) for single species or `HydroMix`, with fall-speed presets, Gaussian / Zeng 2023 turbulence, and beam broadening. | `SpectralIntegrator`, `SpectralResult`, `fall_speed.*`, `GaussianTurbulence`, `InertialZeng2023`, `NoTurbulence` |
 | `radar` | `pytmatrix.radar` | Polarimetric radar observables | `radar_xsect`, `refl` (`Zi`), `Zdr`, `delta_hv`, `rho_hv`, `Kdp`, `Ai` |
 | `scatter` | `pytmatrix.scatter` | Angular-integrated scattering helpers | `sca_intensity`, `sca_xsect`, `ext_xsect`, `ssa`, `asym`, `ldr` |
 | `refractive` | `pytmatrix.refractive` | Refractive-index helpers | `mg_refractive`, `bruggeman_refractive`, `m_w_0C/10C/20C`, `mi`, `ice_refractive` |
