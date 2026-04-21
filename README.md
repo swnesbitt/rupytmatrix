@@ -221,7 +221,7 @@ What ships out of the box:
   to numerical tolerance for every observable.
 
 Worked examples that exercise this machinery against published results
-ship as tutorials 07–11 — see the *Guided tour* below.
+ship as tutorials 07–12 — see the *Guided tour* below.
 
 ---
 
@@ -291,10 +291,23 @@ ships as both a runnable `.py` script and a matching `.ipynb` notebook
     σ<sub>b</sub>(*D*), DWR(*D*), bulk DWR vs. *D*<sub>0</sub>, and the
     spectral DWR(*v*) that tells an aggregate PSD apart from a graupel PSD
     even when their bulk Z<sub>h</sub> values overlap.
+12. **`12_spectral_polarimetry_rain_slw_hail.py`** — synthetic C-band
+    resolution volume at 500 hPa (≈ 6 km MSL) containing supercooled
+    cloud water, rain, and small wet (melting) hail (Maxwell-Garnett EMA
+    with 30 % meltwater by volume), with `(ρ₀/ρ)` fall-speed correction
+    and a 30° slant geometry. Per-species and mixture sZ<sub>h</sub>,
+    sZ<sub>dr</sub>, sK<sub>dp</sub>, sρ<sub>hv</sub> following
+    [Lakshmi et al. 2024, *JTECH*](https://doi.org/10.1175/JTECH-D-22-0113.1) —
+    the rain size-sorting signature, the wet-hail C-band resonance notch
+    in sZ<sub>dr</sub> and sρ<sub>hv</sub>, and the mixture-driven
+    sρ<sub>hv</sub> dip in the rain/hail overlap region all emerge
+    directly. A second simulation with half the hail concentration
+    appears on every plot so each observable's sensitivity to hail
+    number density is immediately visible.
 
 Each script completes in under about 30 s on a laptop so the reader can
 iterate. Every tutorial's module docstring notes which `pytmatrix` section
-it mirrors (tutorials 6–11 cover functionality new to rustmatrix).
+it mirrors (tutorials 6–12 cover functionality new to rustmatrix).
 
 ---
 
