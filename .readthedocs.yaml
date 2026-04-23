@@ -10,10 +10,10 @@ build:
     rust: "1.82"
   jobs:
     post_install:
-      # The maturin build backend (configured in pyproject.toml) compiles
-      # the Rust extension as part of the editable install, so no separate
-      # `maturin develop` step is needed here.
-      - pip install -e ".[docs]"
+      # Non-editable install: maturin (the build backend) compiles the
+      # Rust extension into a real wheel. An editable install here would
+      # produce only a .pth shim with no compiled _core module.
+      - pip install ".[docs]"
 
 sphinx:
   configuration: docs/conf.py
