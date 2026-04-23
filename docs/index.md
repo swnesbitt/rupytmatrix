@@ -110,6 +110,11 @@ Rauber & Nesbitt, Wiley (2018)
 
 ::::
 
+See also the companion project
+**[myPSD](https://github.com/swnesbitt/myPSD)** — an interactive
+web frontend for radar simulation that drives `rustmatrix` under
+the hood, for pedagogy and sensitivity exploration.
+
 ```{toctree}
 :hidden:
 :caption: Get started
@@ -135,6 +140,13 @@ background/psd
 background/spectra
 background/beam
 conventions
+```
+
+```{toctree}
+:hidden:
+:caption: How-to
+
+howto/index
 ```
 
 ```{toctree}
