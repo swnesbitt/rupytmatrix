@@ -8,6 +8,10 @@
 :alt: crates.io
 :target: https://crates.io/crates/rustmatrix
 ```
+```{image} https://img.shields.io/docsrs/rustmatrix
+:alt: docs.rs
+:target: https://docs.rs/rustmatrix
+```
 ```{image} https://img.shields.io/badge/docs-rustmatrix.readthedocs.io-blue.svg
 :alt: docs
 :target: https://rustmatrix.readthedocs.io

@@ -7,7 +7,7 @@ touch it directly; it's here because some users want to read the
 numerical kernels, embed them in a non-Python program, or extend the
 crate with custom functionality.
 
-The Rust API reference is hosted on **[docs.rs/rustmatrix](https://docs.rs/rustmatrix)**
+The Rust API reference is hosted on **[docs.rs/rustmatrix/2.1.1](https://docs.rs/rustmatrix/2.1.1/rustmatrix/)**
 — the standard Rust documentation host, automatically built and
 versioned per crate release.
 

@@ -2,6 +2,13 @@
   <img src="assets/logo.svg" alt="rustmatrix" width="560">
 </p>
 
+<p align="center">
+  <a href="https://pypi.org/project/rustmatrix/"><img src="https://img.shields.io/pypi/v/rustmatrix.svg" alt="PyPI"></a>
+  <a href="https://crates.io/crates/rustmatrix"><img src="https://img.shields.io/crates/v/rustmatrix.svg" alt="crates.io"></a>
+  <a href="https://docs.rs/rustmatrix"><img src="https://img.shields.io/docsrs/rustmatrix" alt="docs.rs"></a>
+  <a href="https://rustmatrix.readthedocs.io"><img src="https://img.shields.io/badge/docs-rustmatrix.readthedocs.io-blue.svg" alt="docs"></a>
+</p>
+
 # rustmatrix
 
 **Rust-backed T-matrix scattering for nonspherical particles — now with
