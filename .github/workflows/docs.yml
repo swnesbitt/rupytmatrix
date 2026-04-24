@@ -18,10 +18,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install package + docs extras
-        run: |
-          pip install maturin
-          pip install -e ".[docs]"
-          maturin develop --release
+        run: pip install -e ".[docs]"
 
       - name: Build docs
         run: sphinx-build -b html docs docs/_build/html
